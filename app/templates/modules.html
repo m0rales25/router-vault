@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Modules · Router Vault{% endblock %}
+{% block pagehead %}
+<div class="pagehead">
+  <div>
+    <div class="eyebrow">Administration</div>
+    <h1>Modules</h1>
+    <div class="subtitle">Install, enable, disable, update and rollback Router Vault modules. Module API v{{ module_api_version }}.</div>
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+{% if message %}<div class="notice ok">{{ message }}</div>{% endif %}
+{% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
+
+<div class="cards" style="grid-template-columns:repeat(4,minmax(150px,1fr))">
+  <div class="metric"><div class="label">Installed</div><div class="value">{{ module_stats.installed }}</div><div class="hint">Module packages</div></div>
+  <div class="metric"><div class="label">Enabled</div><div class="value green">{{ module_stats.enabled }}</div><div class="hint">Active modules</div></div>
+  <div class="metric"><div class="label">Disabled</div><div class="value amber">{{ module_stats.disabled }}</div><div class="hint">Installed but inactive</div></div>
+  <div class="metric"><div class="label">Errors</div><div class="value {{ 'red' if module_stats.errors else '' }}">{{ module_stats.errors }}</div><div class="hint">Modules with runtime error</div></div>
+</div>
+
+<div class="panel">
+  <div class="toolbar">
+    <div>
+      <div class="panel-title">Add Module</div>
+      <div class="panel-sub">Upload a Router Vault <span class="mono">.rvm</span> package. New modules install disabled by default.</div>
+    </div>
+  </div>
+  <form method="post" action="/administration/modules/install" enctype="multipart/form-data" style="margin-top:14px">
+    <div class="grid2">
+      <div class="field">
+        <label>Module package</label>
+        <input type="file" name="module_file" accept=".rvm,.zip" required>
+      </div>
+      <div class="field">
+        <label>Security model</label>
+        <input value="Trusted Python extension · reviewed packages only" readonly>
+      </div>
+    </div>
+    <div class="actions"><button class="btn primary" type="submit">Install / Update Module</button></div>
+  </form>
+  <div class="notice warn" style="margin-top:14px;margin-bottom:0">
+    Modules run inside the Router Vault API process. Install only packages you trust. Declared permissions are shown for review, but Python modules are not a sandbox.
+  </div>
+</div>
+
+<div class="panel">
+  <div class="toolbar"><div><div class="panel-title">Installed Modules</div><div class="panel-sub">Updates are installed by uploading a newer package with the same module ID.</div></div></div>
+  {% if modules %}
+  <div class="table-wrap" style="margin-top:14px">
+    <table>
+      <thead><tr><th>Module</th><th>Version</th><th>Status</th><th>Permissions</th><th>Dependencies</th><th>History</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for m in modules %}
+      <tr id="{{ m.slug }}">
+        <td>
+          <a href="/administration/modules/{{ m.slug }}"><strong>{{ m.name }}</strong></a>
+          <div class="small muted mono">{{ m.slug }}</div>
+          {% if m.description %}<div class="small muted" style="margin-top:3px">{{ m.description }}</div>{% endif %}
+          {% if m.last_error %}<div class="small" style="color:#ff9aaa;margin-top:5px">{{ m.last_error }}</div>{% endif %}
+        </td>
+        <td class="mono">{{ m.version }}</td>
+        <td>
+          {% if m.last_error %}<span class="badge bad">ERROR</span>
+          {% elif m.enabled %}<span class="badge ok">ENABLED</span>
+          {% else %}<span class="badge warn">DISABLED</span>{% endif %}
+        </td>
+        <td class="small">
+          {% for p in m.manifest.permissions %}<span class="badge info" style="margin:2px">{{ p }}</span>{% else %}<span class="muted">None</span>{% endfor %}
+        </td>
+        <td class="small">
+          {% for dep,spec in m.manifest.dependencies.modules.items() %}<div><span class="mono">{{ dep }}</span> <span class="muted">{{ spec }}</span></div>{% else %}<span class="muted">None</span>{% endfor %}
+        </td>
+        <td>{{ m.history|length }}</td>
+        <td>
+          <div class="row-actions">
+            {% if m.enabled %}
+              <a class="btn small" href="/module/{{ m.slug }}">Open</a>
+              <form method="post" action="/administration/modules/{{ m.slug }}/disable"><button class="btn small" type="submit">Disable</button></form>
+            {% else %}
+              <form method="post" action="/administration/modules/{{ m.slug }}/enable"><button class="btn small primary" type="submit">Enable</button></form>
+              {% if m.history %}<form method="post" action="/administration/modules/{{ m.slug }}/rollback"><button class="btn small" type="submit">Rollback</button></form>{% endif %}
+            {% endif %}
+            <a class="btn small" href="/administration/modules/{{ m.slug }}">Details</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty">No modules installed yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

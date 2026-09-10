@@ -1,0 +1,15 @@
+[req]
+default_bits = 3072
+prompt = no
+default_md = sha256
+distinguished_name = dn
+x509_extensions = v3_req
+
+[dn]
+CN = RouterVault Admin
+
+[v3_req]
+subjectAltName = DNS:routervault,DNS:routervault,IP:192.168.100.160,IP:95.129.47.28
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = serverAuth
+basicConstraints = critical,CA:FALSE

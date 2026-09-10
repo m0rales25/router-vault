@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Delete {{ device.name }} · Router Vault{% endblock %}
+{% block pagehead %}<div class="pagehead"><div><div class="eyebrow">Danger zone</div><h1>Delete {{ device.name }}</h1><div class="subtitle">This action permanently removes the Device record, its {{ backup_count }} backup record(s), stored MinIO objects, monitoring history and alert state.</div></div></div>{% endblock %}
+{% block content %}
+<div class="panel danger-zone" style="max-width:760px"><div class="panel-title">Permanent deletion</div><div class="notice bad" style="margin-top:14px">This is intentionally irreversible. Type the exact device name to confirm.</div><form method="post" action="/devices/{{ device.id }}/delete/execute"><input type="hidden" name="delete_backups" value="yes"><div class="field"><label>Type {{ device.name }}</label><input name="confirm_name" autocomplete="off" required></div><div class="actions"><button class="btn danger" type="submit">Delete Device &amp; Backups</button><a class="btn" href="/devices/{{ device.id }}">Cancel</a></div></form></div>
+{% endblock %}

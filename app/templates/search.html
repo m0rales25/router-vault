@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Search · Router Vault{% endblock %}
+{% block pagehead %}<div class="pagehead"><div><div class="eyebrow">Search</div><h1>Global Search</h1><div class="subtitle">Find devices, customers and sites from one place.</div></div></div>{% endblock %}
+{% block content %}
+<div class="panel"><form method="get" action="/search"><div class="field"><label>Search Router Vault</label><input name="q" value="{{ q }}" placeholder="Device, model, RouterOS, WAN IP, customer or site" autofocus></div></form></div>
+<div class="grid3">
+<div class="panel"><div class="panel-title">Devices</div><div style="margin-top:10px">{% for d in devices %}<div class="statline"><a href="/devices/{{ d.id }}"><strong>{{ d.name }}</strong><div class="muted small">{{ d.model or '' }} {{ d.routeros_version or '' }}</div></a><span class="mono small muted">{{ d.wan_ip or '' }}</span></div>{% else %}<div class="empty">No devices.</div>{% endfor %}</div></div>
+<div class="panel"><div class="panel-title">Customers</div><div style="margin-top:10px">{% for c in customers %}<div class="statline"><a href="/customers/{{ c.id }}"><strong>{{ c.name }}</strong></a></div>{% else %}<div class="empty">No customers.</div>{% endfor %}</div></div>
+<div class="panel"><div class="panel-title">Sites</div><div style="margin-top:10px">{% for s in sites %}<div class="statline"><a href="/sites/{{ s.id }}"><strong>{{ s.name }}</strong></a></div>{% else %}<div class="empty">No sites.</div>{% endfor %}</div></div>
+</div>
+{% endblock %}

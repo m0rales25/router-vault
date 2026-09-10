@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% block title %}Audit Log · Router Vault{% endblock %}
+{% block pagehead %}<div class="pagehead"><div><div class="eyebrow">Administration</div><h1>Audit Log</h1><div class="subtitle">Recent administrative and session activity.</div></div></div>{% endblock %}
+{% block content %}<div class="panel"><div class="table-wrap"><table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead><tbody>{% for r in rows %}<tr><td class="nowrap">{{ r.created_at|athens_fmt if r.created_at else '-' }}</td><td>{{ r.username }}</td><td><strong>{{ r.action }}</strong></td><td>{{ r.entity_type or '' }}{% if r.entity_id %}<div class="muted small mono">{{ r.entity_id }}</div>{% endif %}</td><td class="small">{{ r.details or '-' }}</td></tr>{% else %}<tr><td colspan="5" class="empty">No audit records.</td></tr>{% endfor %}</tbody></table></div></div>{% endblock %}

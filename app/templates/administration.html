@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Administration · Router Vault{% endblock %}
+{% block pagehead %}
+<div class="pagehead"><div><div class="eyebrow">Administration</div><h1>Administration</h1><div class="subtitle">Users, modules, access control, audit and system configuration.</div></div></div>
+{% endblock %}
+{% block content %}
+<div class="cards" style="grid-template-columns:repeat(4,minmax(150px,1fr))">
+  <div class="metric"><div class="label">Version</div><div class="value" style="font-size:20px">{{ version }}</div><div class="hint">Module System development branch</div></div>
+  <div class="metric"><div class="label">Devices</div><div class="value">{{ device_count }}</div><div class="hint">Inventory records</div></div>
+  <div class="metric"><div class="label">Backups</div><div class="value">{{ backup_count }}</div><div class="hint">PostgreSQL records</div></div>
+  <div class="metric"><div class="label">Users</div><div class="value">{{ user_count }}</div><div class="hint">Application users</div></div>
+</div>
+<div class="grid4">
+  <a class="panel" href="/users"><div class="panel-title">Users &amp; Roles</div><div class="panel-sub">Admin, read-only and customer-restricted access.</div><div class="actions"><span class="btn small">Manage users</span></div></a>
+  <a class="panel" href="/audit"><div class="panel-title">Audit Log</div><div class="panel-sub">Review administrative changes and session activity.</div><div class="actions"><span class="btn small">Open audit</span></div></a>
+  <a class="panel" href="/administration/modules"><div class="panel-title">Modules</div><div class="panel-sub">{{ module_stats.enabled }} enabled / {{ module_stats.installed }} installed · Module API v{{ module_api_version }}.</div><div class="actions"><span class="btn small">Manage modules</span></div></a>
+  <a class="panel" href="/settings"><div class="panel-title">Settings</div><div class="panel-sub">Monitoring, backups, notifications and security.</div><div class="actions"><span class="btn small primary">Open settings</span></div></a>
+</div>
+
+<div class="grid2">
+  <div class="panel">
+    <div class="toolbar"><div><div class="panel-title">Customers</div><div class="panel-sub">Open a Customer to rename it or delete it with transfer.</div></div></div>
+    <div style="margin-top:10px">{% for customer in customers_list %}<div class="statline"><a href="/customers/{{ customer.id }}"><strong>{{ customer.name }}</strong></a>{% if customer.name != 'Default' %}<span class="row-actions"><a class="btn small" href="/customers/{{ customer.id }}/edit">Edit</a><a class="btn small danger" href="/customers/{{ customer.id }}/delete">Delete</a></span>{% endif %}</div>{% else %}<div class="empty">No Customers.</div>{% endfor %}</div>
+  </div>
+  <div class="panel">
+    <div class="toolbar"><div><div class="panel-title">Sites</div><div class="panel-sub">Rename, move or delete a Site and transfer its Devices.</div></div></div>
+    <div style="margin-top:10px">{% for site in sites_list %}<div class="statline"><a href="/sites/{{ site.id }}"><strong>{{ site.name }}</strong></a><span class="row-actions"><a class="btn small" href="/sites/{{ site.id }}/edit">Edit</a><a class="btn small danger" href="/sites/{{ site.id }}/delete">Delete</a></span></div>{% else %}<div class="empty">No Sites.</div>{% endfor %}</div>
+  </div>
+</div>
+<div class="grid2">
+  <div class="panel">
+    <div class="panel-title">Published services</div>
+    <div style="margin-top:10px">
+      <div class="statline"><span class="muted">Router API</span><strong class="mono">{{ cfg.public_scheme }}://{{ cfg.public_host }}:{{ cfg.public_app_port }}</strong></div>
+      <div class="statline"><span class="muted">Admin Web UI</span><strong class="mono">https://{{ cfg.public_host }}:8443</strong></div>
+      <div class="statline"><span class="muted">SFTP backup ingress</span><strong class="mono">:{{ cfg.public_sftp_port }}</strong></div>
+      <div class="statline"><span class="muted">Your source IP</span><strong class="mono">{{ admin_client_ip }}</strong></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Access policy</div>
+    <div style="margin-top:10px">
+      <div class="statline"><span class="muted">Allowed IP/CIDR rules</span><strong>{{ allowlist_count }}</strong></div>
+      <div class="statline"><span class="muted">Admin transport</span><span class="badge ok">HTTPS</span></div>
+      <div class="statline"><span class="muted">API port exposes login</span><span class="badge ok">NO</span></div>
+      <div class="statline"><span class="muted">Session cookie</span><span class="badge ok">Secure</span></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

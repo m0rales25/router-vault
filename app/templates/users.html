@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Users & Roles · Router Vault{% endblock %}
+{% block pagehead %}<div class="pagehead"><div><div class="eyebrow">Administration</div><h1>Users &amp; Roles</h1><div class="subtitle">Control application access and optional customer scope.</div></div></div>{% endblock %}
+{% block content %}
+<div class="panel">
+  <div class="panel-title">Create user</div>
+  <form method="post" action="/users/new" style="margin-top:14px">
+    <div class="grid4"><div class="field"><label>Username</label><input name="username" required></div><div class="field"><label>Password</label><input name="password" type="password" minlength="8" required></div><div class="field"><label>Role</label><select name="role"><option value="read_only">Read only</option><option value="customer">Customer restricted</option><option value="admin">Admin</option></select></div><div class="field"><label>Customer scope</label><select name="customer_id"><option value="">No customer restriction</option>{% for c in customers %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div></div>
+    <div class="actions"><button class="btn primary">Create user</button></div>
+  </form>
+</div>
+<div class="panel"><div class="panel-title">Existing users</div><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>User</th><th>Role</th><th>Customer</th><th>Enabled</th><th></th></tr></thead><tbody>{% for u in users %}<tr><td><strong>{{ u.username }}</strong></td><td>{{ u.role }}</td><td>{{ u.customer_name or '-' }}</td><td>{% if u.enabled %}<span class="badge ok">YES</span>{% else %}<span class="badge bad">NO</span>{% endif %}</td><td><form method="post" action="/users/{{ u.id }}/toggle"><input type="hidden" name="enabled" value="{{ 0 if u.enabled else 1 }}"><button class="btn small {{ 'danger' if u.enabled else '' }}">{{ 'Disable' if u.enabled else 'Enable' }}</button></form></td></tr>{% else %}<tr><td colspan="5" class="empty">No application users.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

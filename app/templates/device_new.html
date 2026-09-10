@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Add Device · Router Vault{% endblock %}
+{% block pagehead %}
+<div class="pagehead">
+  <div><div class="eyebrow">Inventory</div><h1>Add Device</h1><div class="subtitle">Create the Router Vault record, then use the generated MikroTik installer from the device page.</div></div>
+</div>
+{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:820px">
+  <form id="device-form" method="post" action="/devices/new">
+    <div class="field"><label>Device name / identity</label><input name="device_name" placeholder="MT-HQ-01" required></div>
+    <div class="grid2" style="margin-top:14px">
+      <div class="field">
+        <label>Customer</label>
+        <select name="customer_id" id="customer-select" required>
+          <option value="">Select customer...</option>
+          {% for customer in customers %}<option value="{{ customer.id }}">{{ customer.name }}</option>{% endfor %}
+          <option value="__new__">+ New Customer</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Site</label>
+        <select name="site_id" id="site-select">
+          <option value="">No site</option>
+          {% for site in sites %}<option value="{{ site.id }}" data-customer-id="{{ site.customer_id }}">{{ site.name }}</option>{% endfor %}
+          <option value="__new__">+ New Site</option>
+        </select>
+      </div>
+    </div>
+    <div id="new-customer-box" class="panel tight" style="display:none;margin-top:12px"><div class="field"><label>New Customer name</label><input name="new_customer_name" id="new-customer-name" placeholder="Example Company"></div></div>
+    <div id="new-site-box" class="panel tight" style="display:none;margin-top:12px"><div class="field"><label>New Site name</label><input name="new_site_name" id="new-site-name" placeholder="Athens HQ"></div></div>
+    <div class="field" style="margin-top:14px"><label>Model (optional)</label><input name="model" list="known-models" autocomplete="off" placeholder="Type to search existing models or enter a new one"><datalist id="known-models">{% for item in models %}<option value="{{ item }}">{% endfor %}</datalist><div class="panel-sub">Start typing to search Models already registered in Router Vault. New model names are also allowed.</div></div>
+    <div class="notice ok" style="margin-top:16px">Existing Customers and Sites are selected by immutable ID. Changing capitalization will not create duplicate records.</div>
+    <div class="actions"><button class="btn primary" type="submit">Create Device</button><a class="btn" href="/">Cancel</a></div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){const c=document.getElementById('customer-select'),s=document.getElementById('site-select'),cb=document.getElementById('new-customer-box'),sb=document.getElementById('new-site-box'),cn=document.getElementById('new-customer-name'),sn=document.getElementById('new-site-name'),f=document.getElementById('device-form');function filterSites(){const id=c.value,isNew=id==='__new__';[...s.options].forEach(o=>{if(o.value===''||o.value==='__new__'){o.hidden=false;return}o.hidden=isNew||o.dataset.customerId!==id});if(s.selectedOptions[0]?.hidden)s.value=''}function onC(){cb.style.display=c.value==='__new__'?'block':'none';filterSites();if(c.value==='__new__'&&s.value!=='__new__')s.value=''}function onS(){sb.style.display=s.value==='__new__'?'block':'none'}c.addEventListener('change',onC);s.addEventListener('change',onS);f.addEventListener('submit',e=>{if(c.value==='__new__'&&!cn.value.trim()){e.preventDefault();alert('Enter the new Customer name.');return}if(s.value==='__new__'&&!sn.value.trim()){e.preventDefault();alert('Enter the new Site name.')}});onC();onS()})();
+</script>
+{% endblock %}

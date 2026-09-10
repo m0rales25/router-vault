@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Alerts · Router Vault{% endblock %}
+{% block pagehead %}
+<div class="pagehead">
+  <div><div class="eyebrow">Monitoring</div><h1>Alerts</h1><div class="subtitle">Current incidents first, followed by recovered history.</div></div>
+</div>
+{% endblock %}
+{% block content %}
+{% set active = alerts|selectattr('active')|list %}
+<div class="cards" style="grid-template-columns:repeat(3,minmax(150px,1fr))">
+  <div class="metric"><div class="label">Active</div><div class="value {{ 'red' if active else 'green' }}">{{ active|length }}</div><div class="hint">Open incidents</div></div>
+  <div class="metric"><div class="label">Total history</div><div class="value">{{ alerts|length }}</div><div class="hint">Active + recovered</div></div>
+  <div class="metric"><div class="label">Recovered</div><div class="value green">{{ alerts|length - active|length }}</div><div class="hint">Closed incidents</div></div>
+</div>
+
+<div class="panel no-print">
+  <div class="grid3">
+    <div class="field"><label>Search alerts</label><input id="alert-search" placeholder="Device, customer, site..."></div>
+    <div class="field"><label>Status</label><select id="alert-status"><option value="">All</option><option value="ACTIVE">Active</option><option value="RECOVERED">Recovered</option></select></div>
+    <div class="field"><label>Type</label><select id="alert-type"><option value="">All types</option><option value="Device Down">Device Down</option><option value="Backup Missing">Backup Missing</option></select></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="table-wrap">
+    <table id="alerts-table"><thead><tr><th>Type</th><th>Device</th><th>Customer</th><th>Site</th><th>Status</th><th>Started</th><th>Last sent</th><th>Recovered</th><th>Acknowledged</th><th>Muted until</th>{% if role=='admin' %}<th class="no-print">Actions</th>{% endif %}</tr></thead><tbody>
+    {% for a in alerts %}
+      <tr data-status="{{ 'ACTIVE' if a.active else 'RECOVERED' }}" data-type="{{ a.alert_type }}">
+        <td><strong>{{ a.alert_type }}</strong></td>
+        <td>{% if a.device_name != 'Unknown device' %}<a href="/devices/{{ a.device_id }}"><strong>{{ a.device_name }}</strong></a>{% else %}<span class="badge warn">Unknown device</span>{% endif %}</td>
+        <td>{{ a.customer_name }}</td><td>{{ a.site_name }}</td>
+        <td>{% if a.active %}<span class="badge down">ACTIVE</span>{% else %}<span class="badge up">RECOVERED</span>{% endif %}</td>
+        <td class="nowrap">{{ a.first_seen_at|athens_fmt if a.first_seen_at else '-' }}</td>
+        <td class="nowrap">{{ a.last_sent_at|athens_fmt if a.last_sent_at else '-' }}</td>
+        <td class="nowrap">{{ a.recovered_at|athens_fmt if a.recovered_at else '-' }}</td>
+        <td class="nowrap">{% if a.acknowledged_at %}{{ a.acknowledged_at|athens_fmt }}{% if a.acknowledged_by %}<div class="muted small">{{ a.acknowledged_by }}</div>{% endif %}{% else %}-{% endif %}</td>
+        <td class="nowrap">{{ a.muted_until|athens_fmt if a.muted_until else '-' }}</td>
+        {% if role=='admin' %}<td class="no-print"><div class="row-actions"><form method="post" action="/alerts/ack"><input type="hidden" name="alert_key" value="{{ a.alert_key }}"><button class="btn small" type="submit">Ack</button></form><form method="post" action="/alerts/mute"><input type="hidden" name="alert_key" value="{{ a.alert_key }}"><input type="hidden" name="hours" value="24"><button class="btn small" type="submit">Mute 24h</button></form></div></td>{% endif %}
+      </tr>
+    {% else %}<tr><td colspan="11" class="empty">No alerts recorded.</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){const q=document.getElementById('alert-search'),st=document.getElementById('alert-status'),ty=document.getElementById('alert-type'),rows=[...document.querySelectorAll('#alerts-table tbody tr')];function f(){const term=(q.value||'').toLowerCase();rows.forEach(r=>{const okText=!term||r.textContent.toLowerCase().includes(term);const okS=!st.value||r.dataset.status===st.value;const okT=!ty.value||r.dataset.type===ty.value;r.style.display=(okText&&okS&&okT)?'':'none'})}q.addEventListener('input',f);st.addEventListener('change',f);ty.addEventListener('change',f)})();
+</script>
+{% endblock %}

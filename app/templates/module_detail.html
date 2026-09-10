@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}{{ module.name }} · Modules · Router Vault{% endblock %}
+{% block pagehead %}
+<div class="pagehead">
+  <div>
+    <div class="eyebrow">Administration · Modules</div>
+    <h1>{{ module.name }}</h1>
+    <div class="subtitle"><span class="mono">{{ module.slug }}</span> · v{{ module.version }} · {{ module.author or 'Unknown author' }}</div>
+  </div>
+  <div class="head-actions">
+    <a class="btn" href="/administration/modules">Back to Modules</a>
+    {% if module.enabled %}<a class="btn primary" href="/module/{{ module.slug }}">Open Module</a>{% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+<div class="cards" style="grid-template-columns:repeat(4,minmax(150px,1fr))">
+  <div class="metric"><div class="label">Version</div><div class="value" style="font-size:20px">{{ module.version }}</div><div class="hint">Module release</div></div>
+  <div class="metric"><div class="label">State</div><div class="value" style="font-size:20px">{{ 'Enabled' if module.enabled else 'Disabled' }}</div><div class="hint">Runtime state</div></div>
+  <div class="metric"><div class="label">Module API</div><div class="value" style="font-size:20px">v{{ module.manifest.module_api }}</div><div class="hint">Router Vault API</div></div>
+  <div class="metric"><div class="label">Rollback points</div><div class="value">{{ module.history|length }}</div><div class="hint">Stored code versions</div></div>
+</div>
+
+{% if module.last_error %}<div class="notice bad"><strong>Last module error:</strong> {{ module.last_error }}</div>{% endif %}
+
+<div class="grid2">
+  <div class="panel">
+    <div class="panel-title">Module Information</div>
+    <div style="margin-top:10px">
+      <div class="statline"><span class="muted">ID</span><strong class="mono">{{ module.slug }}</strong></div>
+      <div class="statline"><span class="muted">Version</span><strong class="mono">{{ module.version }}</strong></div>
+      <div class="statline"><span class="muted">Author</span><strong>{{ module.author or '-' }}</strong></div>
+      <div class="statline"><span class="muted">Router Vault</span><strong class="mono">{{ module.manifest.router_vault }}</strong></div>
+      <div class="statline"><span class="muted">Entrypoint</span><strong class="mono">{{ module.manifest.entrypoint }}</strong></div>
+      <div class="statline"><span class="muted">Package SHA256</span><strong class="mono" style="font-size:10px">{{ module.package_sha256 }}</strong></div>
+    </div>
+    {% if module.description %}<div class="panel-sub" style="margin-top:14px">{{ module.description }}</div>{% endif %}
+  </div>
+  <div class="panel">
+    <div class="panel-title">Permissions &amp; Access</div>
+    <div style="margin-top:10px">
+      <div class="statline"><span class="muted">Access roles</span><strong>{{ module.manifest.access|join(', ') }}</strong></div>
+      <div class="statline"><span class="muted">Permissions</span><span>{% for p in module.manifest.permissions %}<span class="badge info" style="margin:2px">{{ p }}</span>{% else %}<span class="muted">None</span>{% endfor %}</span></div>
+      <div class="statline"><span class="muted">Routes</span><strong>{{ module.manifest.routes|length }}</strong></div>
+      <div class="statline"><span class="muted">Hooks</span><strong>{{ module.manifest.hooks|length }}</strong></div>
+      <div class="statline"><span class="muted">Migrations</span><strong>{{ module.manifest.migrations|length }}</strong></div>
+    </div>
+  </div>
+</div>
+
+<div class="grid2">
+  <div class="panel">
+    <div class="panel-title">Dependencies</div>
+    <div style="margin-top:10px">
+      {% for dep,spec in module.manifest.dependencies.modules.items() %}
+        <div class="statline"><strong class="mono">{{ dep }}</strong><span class="mono muted">{{ spec }}</span></div>
+      {% else %}<div class="empty">No module dependencies.</div>{% endfor %}
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Routes / Hooks</div>
+    <div style="margin-top:10px">
+      {% for route in module.manifest.routes %}<div class="statline"><span><span class="badge info">{{ route.method }}</span> <span class="mono">{{ route.path }}</span></span><strong class="mono">{{ route.handler }}</strong></div>{% endfor %}
+      {% for hook,handler in module.manifest.hooks.items() %}<div class="statline"><span class="mono">{{ hook }}</span><strong class="mono">{{ handler }}</strong></div>{% endfor %}
+      {% if not module.manifest.routes and not module.manifest.hooks %}<div class="empty">No routes or hooks.</div>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="toolbar"><div><div class="panel-title">Lifecycle</div><div class="panel-sub">Disable before rollback or uninstall.</div></div></div>
+  <div class="actions">
+    {% if module.enabled %}
+      <form method="post" action="/administration/modules/{{ module.slug }}/disable"><button class="btn" type="submit">Disable Module</button></form>
+    {% else %}
+      <form method="post" action="/administration/modules/{{ module.slug }}/enable"><button class="btn primary" type="submit">Enable Module</button></form>
+      {% if module.history %}<form method="post" action="/administration/modules/{{ module.slug }}/rollback"><button class="btn" type="submit">Rollback Previous Version</button></form>{% endif %}
+      <form method="post" action="/administration/modules/{{ module.slug }}/uninstall"><button class="btn danger" type="submit">Uninstall Code, Preserve Data</button></form>
+    {% endif %}
+  </div>
+</div>
+
+{% if not module.enabled %}
+<div class="panel danger-zone">
+  <div class="panel-title">Purge Module Data</div>
+  <div class="panel-sub">Runs declared down migrations, removes module settings and uninstalls the code. This is intentionally harder to do.</div>
+  <form method="post" action="/administration/modules/{{ module.slug }}/uninstall" style="margin-top:14px">
+    <input type="hidden" name="purge_data" value="1">
+    <div class="field"><label>Type module ID to confirm</label><input name="confirm_slug" placeholder="{{ module.slug }}" autocomplete="off" required></div>
+    <div class="actions"><button class="btn danger" type="submit">Purge Data &amp; Uninstall</button></div>
+  </form>
+</div>
+{% endif %}
+
+<div class="grid2">
+  <div class="panel">
+    <div class="panel-title">Rollback History</div>
+    <div style="margin-top:10px">
+      {% for h in module.history %}<div class="statline"><span><strong>v{{ h.version }}</strong><div class="small muted">{{ h.created_at|athens_fmt }}</div></span><span class="mono small">{{ h.filename }}</span></div>{% else %}<div class="empty">No rollback history.</div>{% endfor %}
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Recent Module Events</div>
+    <div style="margin-top:10px;max-height:420px;overflow:auto">
+      {% for e in events %}<div class="statline"><span><strong>{{ e.event_type }}</strong><div class="small muted">{{ e.message }}</div></span><span class="small mono">{{ e.created_at|athens_fmt }}</span></div>{% else %}<div class="empty">No module events.</div>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

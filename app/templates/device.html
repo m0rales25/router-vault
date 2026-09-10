@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ device.name }} · Router Vault{% endblock %}
+{% block pagehead %}
+<div class="pagehead">
+  <div>
+    <div class="eyebrow">Device</div>
+    <h1>{{ device.name }}</h1>
+    <div class="subtitle"><a href="/customers/{{ customer.id }}">{{ customer.name if customer else '-' }}</a>{% if site %} · <a href="/sites/{{ site.id }}">{{ site.name }}</a>{% endif %} · {{ device.model or 'MikroTik' }}</div>
+  </div>
+  <div class="head-actions no-print">
+    <a class="btn" href="/backups/bulk-download?device={{ device.id }}&latest_only=1">Download latest set</a>
+    {% if role == 'admin' %}<a class="btn" href="/devices/{{ device.id }}/edit">Edit</a><a class="btn danger" href="/devices/{{ device.id }}/delete-confirm">Delete</a>{% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+{% if request.query_params.get('token_rotated') %}<div class="notice warn">Device token was rotated. The already-installed router script will stop authenticating until it is updated.</div>{% endif %}
+
+<div class="cards">
+  <div class="metric"><div class="label">Status</div><div class="value">{% if status=='UP' %}<span class="badge up">UP</span>{% elif status=='DOWN' %}<span class="badge down">DOWN</span>{% else %}<span class="badge waiting">WAITING</span>{% endif %}</div><div class="hint">DOWN after {{ down_after }} min</div></div>
+  <div class="metric"><div class="label">RouterOS</div><div class="value" style="font-size:20px">{{ device.routeros_version or '-' }}</div><div class="hint">Reported by heartbeat</div></div>
+  <div class="metric"><div class="label">CPU</div><div class="value" style="font-size:20px">{{ (device.cpu_load ~ '%') if device.cpu_load is not none else '-' }}</div><div class="hint">Current load</div></div>
+  <div class="metric"><div class="label">Free RAM</div><div class="value" style="font-size:20px">{{ device.free_memory|bytes_fmt if device.free_memory else '-' }}</div><div class="hint">Reported memory</div></div>
+  <div class="metric"><div class="label">Availability</div><div class="value" style="font-size:20px">{{ availability_7d if availability_7d is not none else '-' }}{% if availability_7d is not none %}%{% endif %}</div><div class="hint">Last 7 days</div></div>
+  <div class="metric"><div class="label">Backup set</div><div class="value" style="font-size:20px">{% if backup_integrity.valid %}<span class="badge up">OK</span>{% elif backup_integrity.status=='MISSING' %}<span class="badge down">MISSING</span>{% else %}<span class="badge waiting">PARTIAL</span>{% endif %}</div><div class="hint">RSC + binary</div></div>
+</div>
+
+<div class="grid2">
+  <div class="panel">
+    <div class="panel-title">Device state</div>
+    <div style="margin-top:10px">
+      <div class="statline"><span class="muted">Last heartbeat</span><strong>{{ device.last_seen_at|athens_fmt if device.last_seen_at else '-' }}</strong></div>
+      <div class="statline"><span class="muted">Last backup</span><strong>{{ device.last_backup_at|athens_fmt if device.last_backup_at else '-' }}</strong></div>
+      <div class="statline"><span class="muted">Uptime</span><strong title="{{ device.uptime or '' }}">{{ device.uptime|uptime_fmt if device.uptime else '-' }}</strong></div>
+      <div class="statline"><span class="muted">WAN IP</span><strong class="mono">{{ device.wan_ip or '-' }}</strong></div>
+      <div class="statline"><span class="muted">Heartbeat interval</span><strong>{{ heartbeat_interval }} min</strong></div>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Availability</div>
+    <div style="margin-top:10px">
+      <div class="statline"><span class="muted">24 hours</span><strong>{{ availability_1d if availability_1d is not none else '-' }}{% if availability_1d is not none %}%{% endif %}</strong></div>
+      <div class="statline"><span class="muted">7 days</span><strong>{{ availability_7d if availability_7d is not none else '-' }}{% if availability_7d is not none %}%{% endif %}</strong></div>
+      <div class="statline"><span class="muted">30 days</span><strong>{{ availability_30d if availability_30d is not none else '-' }}{% if availability_30d is not none %}%{% endif %}</strong></div>
+      <div class="statline"><span class="muted">Script reported version</span><strong>{{ script_state.installed_version if script_state and script_state.installed_version else '-' }}</strong></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="toolbar">
+    <div><div class="panel-title">Backups</div><div class="panel-sub">Latest 50 files stored for this device.</div></div>
+    <a class="btn" href="/backups/bulk-download?device={{ device.id }}&latest_only=1">Latest backup set</a>
+  </div>
+  {% if role == 'admin' %}<form method="post" action="/devices/{{ device.id }}/backups/delete-selected" onsubmit="return confirmSelected()">{% endif %}
+    {% if role == 'admin' %}<div class="actions no-print"><label class="small"><input type="checkbox" id="select-all" style="width:auto"> Select all</label><button class="btn danger small" type="submit">Delete selected</button></div>{% endif %}
+    <div class="table-wrap" style="margin-top:12px">
+      <table><thead><tr>{% if role == 'admin' %}<th></th>{% endif %}<th>Time</th><th>Filename</th><th>Type</th><th>Size</th><th></th></tr></thead><tbody>
+      {% for b in backups %}<tr>
+        {% if role == 'admin' %}<td><input type="checkbox" class="backup-checkbox" name="backup_ids" value="{{ b.id }}" style="width:auto"></td>{% endif %}
+        <td class="nowrap">{{ b.created_at|athens_fmt }}</td><td class="mono small">{{ b.filename }}</td><td>{{ b.backup_type }}</td><td class="nowrap">{{ b.size_bytes|bytes_fmt }}</td><td><a class="btn small" href="/devices/{{ device.id }}/backups/{{ b.id }}/download">Download</a></td>
+      </tr>{% else %}<tr><td colspan="6" class="empty">No backups have been ingested for this device yet.</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  {% if role == 'admin' %}</form>{% endif %}
+</div>
+
+<div class="split">
+  <div class="panel">
+    <div class="toolbar"><div><div class="panel-title">MikroTik installer</div><div class="panel-sub">Existing installed scripts are not modified automatically.</div></div><button class="btn" id="copy-script" type="button">Copy script</button></div>
+    <details class="clean" style="margin-top:14px"><summary>Show generated script</summary><textarea class="codebox" id="script" readonly style="margin-top:10px">{{ script }}</textarea></details>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Recent incidents</div>
+    <div style="margin-top:10px">
+      {% for incident in history[1][:8] %}
+      <div class="statline"><span><strong>{{ incident.incident_type|upper }}</strong><div class="muted small">{{ incident.opened_at|athens_fmt }}</div></span><span>{% if incident.closed_at %}<span class="badge ok">Recovered</span>{% else %}<span class="badge bad">Open</span>{% endif %}</span></div>
+      {% else %}<div class="empty">No recent incidents.</div>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const copy=document.getElementById('copy-script');copy?.addEventListener('click',async()=>{const t=document.getElementById('script');try{await navigator.clipboard.writeText(t.value);copy.textContent='Copied';setTimeout(()=>copy.textContent='Copy script',1400)}catch(e){t.select();document.execCommand('copy')}});
+const all=document.getElementById('select-all');all?.addEventListener('change',()=>document.querySelectorAll('.backup-checkbox').forEach(x=>x.checked=all.checked));
+function confirmSelected(){const n=document.querySelectorAll('.backup-checkbox:checked').length;if(!n){alert('Select at least one backup.');return false}return confirm(`Delete ${n} selected backup file(s) from PostgreSQL and MinIO?`)}
+</script>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Reports · Router Vault{% endblock %}
+{% block pagehead %}
+<div class="pagehead">
+  <div><div class="eyebrow">Analytics</div><h1>Reports</h1><div class="subtitle">Inventory, availability, backup compliance and export tools in one place.</div></div>
+  <div class="head-actions no-print"><a class="btn" href="/reports.xlsx?report=devices">Device XLSX</a><a class="btn" href="/reports.xlsx?report=availability">Availability XLSX</a><a class="btn" href="/reports.xlsx?report=backup_compliance">Backup XLSX</a></div>
+</div>
+{% endblock %}
+{% block content %}
+<div class="tabs no-print">
+  <a class="tab {{ 'active' if report_type=='overview' else '' }}" href="/reports?type=overview">Overview</a>
+  <a class="tab {{ 'active' if report_type=='devices' else '' }}" href="/reports?type=devices">Devices</a>
+  <a class="tab {{ 'active' if report_type=='backups' else '' }}" href="/reports?type=backups">Backups</a>
+</div>
+
+{% if report_type == 'overview' %}
+  {% set backup_ok = compliance|selectattr('today')|list %}
+  <div class="cards" style="grid-template-columns:repeat(4,minmax(150px,1fr))">
+    <div class="metric"><div class="label">Devices</div><div class="value">{{ devices_list|length }}</div><div class="hint">Current scope</div></div>
+    <div class="metric"><div class="label">Backup today</div><div class="value green">{{ backup_ok|length }}</div><div class="hint">Files received today</div></div>
+    <div class="metric"><div class="label">Backup issues</div><div class="value {{ 'amber' if (compliance|length-backup_ok|length) else 'green' }}">{{ compliance|length-backup_ok|length }}</div><div class="hint">Missing today</div></div>
+    <div class="metric"><div class="label">High CPU</div><div class="value {{ 'red' if high_cpu else 'green' }}">{{ high_cpu|length }}</div><div class="hint">80% or higher</div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <div class="panel-title">RouterOS versions</div>
+      <div style="margin-top:10px">{% for version,count in versions|dictsort %}<div class="statline"><span>{{ version }}</span><strong>{{ count }}</strong></div>{% else %}<div class="empty">No RouterOS data.</div>{% endfor %}</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">High CPU</div>
+      <div style="margin-top:10px">{% for d in high_cpu %}<div class="statline"><a href="/devices/{{ d.id }}"><strong>{{ d.name }}</strong></a><span class="badge bad">{{ d.cpu_load }}%</span></div>{% else %}<div class="empty">No devices at or above 80% CPU.</div>{% endfor %}</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar"><div><div class="panel-title">Backup compliance</div><div class="panel-sub">Daily backup presence plus latest RSC / binary pair integrity.</div></div></div>
+    <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Customer</th><th>Site</th><th>Device</th><th>Today</th><th>Pair integrity</th><th>Last backup</th></tr></thead><tbody>
+      {% for x in compliance %}{% set d=x.device %}<tr><td>{{ customer_map[d.customer_id|string].name if d.customer_id|string in customer_map else '-' }}</td><td>{{ site_map[d.site_id|string].name if d.site_id and d.site_id|string in site_map else '-' }}</td><td><a href="/devices/{{ d.id }}"><strong>{{ d.name }}</strong></a></td><td>{% if x.today %}<span class="badge ok">OK</span>{% else %}<span class="badge bad">MISSING</span>{% endif %}</td><td>{% if x.integrity.valid %}<span class="badge ok">OK</span>{% elif x.integrity.status=='MISSING' %}<span class="badge bad">MISSING</span>{% else %}<span class="badge warn">PARTIAL</span>{% endif %}</td><td class="nowrap">{{ x.last_backup_at|athens_fmt if x.last_backup_at else '-' }}</td></tr>{% else %}<tr><td colspan="6" class="empty">No devices.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Availability</div>
+    <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Device</th><th>1 day</th><th>7 days</th><th>30 days</th></tr></thead><tbody>{% for d in devices_list %}<tr><td><a href="/devices/{{ d.id }}"><strong>{{ d.name }}</strong></a></td><td>{{ availability(d.id,1) if availability(d.id,1) is not none else '-' }}{% if availability(d.id,1) is not none %}%{% endif %}</td><td>{{ availability(d.id,7) if availability(d.id,7) is not none else '-' }}{% if availability(d.id,7) is not none %}%{% endif %}</td><td>{{ availability(d.id,30) if availability(d.id,30) is not none else '-' }}{% if availability(d.id,30) is not none %}%{% endif %}</td></tr>{% else %}<tr><td colspan="4" class="empty">No devices.</td></tr>{% endfor %}</tbody></table></div>
+  </div>
+{% else %}
+  <div class="panel no-print">
+    <form method="get" action="/reports">
+      <input type="hidden" name="type" value="{{ report_type }}">
+      <div class="grid4">
+        <div class="field"><label>Customer</label><select id="r_customer" name="customer"><option value="">All customers</option>{% for c in customers_list %}<option value="{{ c.id }}" {% if filters.customer==c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Site</label><select id="r_site" name="site"><option value="">All sites</option>{% for s in sites_list %}<option value="{{ s.id }}" data-customer="{{ s.customer_id }}" {% if filters.site==s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select></div>
+        <div class="field"><label>Device</label><select id="r_device" name="device"><option value="">All devices</option>{% for d in devices_list %}<option value="{{ d.id }}" data-customer="{{ d.customer_id }}" data-site="{{ d.site_id or '' }}" {% if filters.device==d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
+        {% if report_type=='devices' %}<div class="field"><label>Status</label><select name="status"><option value="">All statuses</option>{% for st in ['UP','DOWN','WAITING'] %}<option value="{{ st }}" {% if filters.status==st %}selected{% endif %}>{{ st }}</option>{% endfor %}</select></div><div class="field"><label>RouterOS</label><input name="routeros" value="{{ filters.routeros }}"></div><div class="field"><label>Model</label><input name="model" value="{{ filters.model }}"></div>{% else %}<div class="field"><label>From date</label><input type="date" name="date_from" value="{{ filters.date_from }}"></div><div class="field"><label>To date</label><input type="date" name="date_to" value="{{ filters.date_to }}"></div>{% endif %}
+        <div class="field"><label>Search</label><input name="q" value="{{ filters.q }}"></div>
+      </div>
+      <div class="actions"><button class="btn primary">Apply</button><a class="btn" href="/reports?type={{ report_type }}">Clear</a><a class="btn" href="/reports.csv?type={{ report_type }}&customer={{ filters.customer }}&site={{ filters.site }}&device={{ filters.device }}&status={{ filters.status }}&routeros={{ filters.routeros }}&model={{ filters.model }}&q={{ filters.q }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">CSV</a><button class="btn" type="button" onclick="window.print()">Print</button></div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar"><div><div class="panel-title">{{ 'Device inventory' if report_type=='devices' else 'Backup history' }}</div><div class="panel-sub">{{ rows|length }} row(s)</div></div></div>
+    <div class="table-wrap" style="margin-top:12px">
+      {% if report_type=='devices' %}
+      <table><thead><tr><th>Customer</th><th>Site</th><th>Device</th><th>Model</th><th>RouterOS</th><th>Status</th><th>CPU</th><th>RAM</th><th>Last heartbeat</th><th>Last backup</th></tr></thead><tbody>{% for row in rows %}{% set d=row.device %}<tr><td>{{ row.customer.name if row.customer else '-' }}</td><td>{{ row.site.name if row.site else '-' }}</td><td><a href="/devices/{{ d.id }}"><strong>{{ d.name }}</strong></a></td><td>{{ d.model or '-' }}</td><td>{{ d.routeros_version or '-' }}</td><td>{% if row.status=='UP' %}<span class="badge up">UP</span>{% elif row.status=='DOWN' %}<span class="badge down">DOWN</span>{% else %}<span class="badge waiting">WAITING</span>{% endif %}</td><td>{{ (d.cpu_load ~ '%') if d.cpu_load is not none else '-' }}</td><td>{{ d.free_memory|bytes_fmt if d.free_memory else '-' }}</td><td class="nowrap">{{ d.last_seen_at|athens_fmt if d.last_seen_at else '-' }}</td><td class="nowrap">{{ d.last_backup_at|athens_fmt if d.last_backup_at else '-' }}</td></tr>{% else %}<tr><td colspan="10" class="empty">No matching devices.</td></tr>{% endfor %}</tbody></table>
+      {% else %}
+      <table><thead><tr><th>Customer</th><th>Site</th><th>Device</th><th>Time</th><th>Filename</th><th>Type</th><th>Size</th></tr></thead><tbody>{% for row in rows %}{% set b=row.backup %}<tr><td>{{ row.customer.name if row.customer else '-' }}</td><td>{{ row.site.name if row.site else '-' }}</td><td><a href="/devices/{{ row.device.id }}"><strong>{{ row.device.name }}</strong></a></td><td class="nowrap">{{ b.created_at|athens_fmt }}</td><td class="mono small">{{ b.filename }}</td><td>{{ b.backup_type }}</td><td>{{ b.size_bytes|bytes_fmt }}</td></tr>{% else %}<tr><td colspan="7" class="empty">No matching backups.</td></tr>{% endfor %}</tbody></table>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){const c=document.getElementById('r_customer'),s=document.getElementById('r_site'),d=document.getElementById('r_device');if(!c||!s||!d)return;function f(){const cv=c.value;[...s.options].forEach((o,i)=>{if(!i)return;o.hidden=!!cv&&o.dataset.customer!==cv});if(s.selectedOptions[0]?.hidden)s.value='';const sv=s.value;[...d.options].forEach((o,i)=>{if(!i)return;o.hidden=(!!cv&&o.dataset.customer!==cv)||(!!sv&&o.dataset.site!==sv)});if(d.selectedOptions[0]?.hidden)d.value=''}c.addEventListener('change',f);s.addEventListener('change',f);f()})();
+</script>
+{% endblock %}

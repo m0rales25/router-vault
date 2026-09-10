@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Router Vault{% endblock %}
+{% block anonymous %}
+<div class="login-body">
+  <div class="login-card">
+    <div class="login-mark">
+      <img class="brand-router" style="width:46px;height:34px" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA0MCI+PGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOGZiN2ZmIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+PHBhdGggZD0iTTE1IDEyIDkgM000OSAxMmw2LTkiLz48cmVjdCB4PSI3IiB5PSIxMSIgd2lkdGg9IjUwIiBoZWlnaHQ9IjI1IiByeD0iNyIgZmlsbD0iIzE3MzE1ZCIgc3Ryb2tlPSIjNWM5M2ZmIi8+PHBhdGggZD0iTTE0IDI4aDM2Ii8+PC9nPjxnIGZpbGw9IiM3OWU1YWUiPjxjaXJjbGUgY3g9IjE3IiBjeT0iMjAiIHI9IjIuMiIvPjxjaXJjbGUgY3g9IjI1IiBjeT0iMjAiIHI9IjIuMiIvPjwvZz48ZyBmaWxsPSIjODZhOWRiIj48cmVjdCB4PSIzNCIgeT0iMTgiIHdpZHRoPSI1IiBoZWlnaHQ9IjQiIHJ4PSIxIi8+PHJlY3QgeD0iNDIiIHk9IjE4IiB3aWR0aD0iNSIgaGVpZ2h0PSI0IiByeD0iMSIvPjxyZWN0IHg9IjUwIiB5PSIxOCIgd2lkdGg9IjMiIGhlaWdodD0iNCIgcng9IjEiLz48L2c+PC9zdmc+" alt="Router">
+      <div>
+        <div class="login-title">Router Vault</div>
+        <div class="login-sub">Secure MikroTik monitoring &amp; backup management</div>
+      </div>
+    </div>
+
+    {% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
+
+    <form method="post" action="/login" autocomplete="on">
+      <div class="field">
+        <label>Username</label>
+        <input name="username" autocomplete="username" autofocus required>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" name="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn primary" type="submit">Sign in</button>
+    </form>
+    <div class="muted small" style="margin-top:18px;text-align:center">Admin access is protected by HTTPS and source IP policy.</div><div class="footer" style="margin-top:16px">Copyright John Minopoulos 2026</div>
+  </div>
+</div>
+{% endblock %}

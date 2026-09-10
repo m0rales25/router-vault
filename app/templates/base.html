@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Router Vault{% endblock %}</title>
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#07101f;--bg2:#0a1426;--panel:#101b2f;--panel2:#0c1628;--panel3:#14213a;
+  --line:#22324d;--line2:#314462;--text:#edf4ff;--muted:#8fa1ba;--sub:#bcc9dc;
+  --blue:#4f8cff;--blue2:#76a7ff;--green:#34d399;--greenbg:#103729;
+  --red:#fb7185;--redbg:#421922;--amber:#fbbf24;--amberbg:#3b2d0d;
+  --shadow:0 18px 55px rgba(0,0,0,.24);--radius:16px;
+}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(1200px 520px at 50% -180px,#17305c55,transparent),var(--bg);color:var(--text);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:var(--blue2);text-decoration:none}a:hover{color:#a9c7ff}button,input,select,textarea{font:inherit}.shell{max-width:1680px;margin:auto;padding:0 24px 38px}.appbar{position:sticky;top:0;z-index:50;margin:0 -24px 26px;padding:14px 24px;background:rgba(7,16,31,.89);backdrop-filter:blur(18px);border-bottom:1px solid rgba(49,68,98,.6)}.appbar-inner{max-width:1680px;margin:auto;display:flex;align-items:center;gap:18px}.brand{display:flex;align-items:center;gap:11px;color:var(--text);font-size:20px;font-weight:850;letter-spacing:-.02em;white-space:nowrap}.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(145deg,#4f8cff,#315fd4);display:grid;place-items:center;box-shadow:0 8px 24px #315fd455;font-weight:900}.brand-router{width:34px;height:24px;object-fit:contain;filter:drop-shadow(0 5px 10px rgba(49,95,212,.28))}.mainnav{display:flex;align-items:center;gap:5px}.navlink,.navsummary{display:flex;align-items:center;gap:7px;color:var(--sub);padding:9px 11px;border-radius:10px;font-weight:680;white-space:nowrap}.navlink:hover,.navsummary:hover,.navlink.active,.navsummary.active{background:#14223b;color:#fff}.navgroup{position:relative}.navgroup summary{list-style:none;cursor:pointer}.navgroup summary::-webkit-details-marker{display:none}.navmenu{position:absolute;top:44px;right:0;min-width:220px;background:#0e192c;border:1px solid var(--line2);border-radius:13px;padding:7px;box-shadow:var(--shadow)}.navmenu a{display:flex;gap:9px;padding:10px 11px;border-radius:9px;color:var(--sub);font-weight:650}.navmenu a:hover{background:#182742;color:#fff}.top-search{margin-left:auto;display:flex;align-items:center;gap:7px}.top-search input{width:220px}.userpill{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;padding-left:5px}.pagehead{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}.pagehead h1{font-size:30px;letter-spacing:-.035em;margin:0}.eyebrow{color:var(--blue2);font-size:11px;text-transform:uppercase;letter-spacing:.12em;font-weight:800;margin-bottom:7px}.subtitle{color:var(--muted);margin-top:7px;max-width:820px}.head-actions{display:flex;gap:8px;flex-wrap:wrap}.panel{background:linear-gradient(180deg,rgba(17,29,50,.96),rgba(13,24,43,.96));border:1px solid var(--line);border-radius:var(--radius);padding:19px;box-shadow:0 8px 30px rgba(0,0,0,.10);margin-bottom:16px}.panel.tight{padding:14px}.panel-title{font-size:17px;font-weight:800;margin:0}.panel-sub{color:var(--muted);font-size:12px;margin-top:4px}.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.cards{display:grid;grid-template-columns:repeat(6,minmax(140px,1fr));gap:12px;margin-bottom:16px}.metric{background:linear-gradient(160deg,#111e34,#0c1729);border:1px solid var(--line);border-radius:15px;padding:17px;min-height:100px}.metric .label{color:var(--muted);font-size:12px;font-weight:650}.metric .value{font-size:29px;font-weight:850;letter-spacing:-.035em;margin-top:7px}.metric .hint{font-size:11px;color:#71849f;margin-top:5px}.value.green{color:#72e7ae}.value.red{color:#ff9aaa}.value.amber{color:#ffd369}.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.field label{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:750;margin:0 0 6px}.input,input,select,textarea{width:100%;background:#0a1425;border:1px solid #2a3b59;color:var(--text);border-radius:10px;padding:10px 11px;outline:none}.input:focus,input:focus,select:focus,textarea:focus{border-color:#4f8cff;box-shadow:0 0 0 3px rgba(79,140,255,.12)}input[readonly]{color:#aebcd1;background:#0b1525}.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 12px;border-radius:10px;border:1px solid var(--line2);background:#16243c;color:var(--text);font-weight:750;cursor:pointer;white-space:nowrap}.btn:hover{background:#1c2d4b;color:#fff}.btn.primary{background:linear-gradient(180deg,#568fff,#3f78eb);border-color:#5e96ff;color:#fff}.btn.primary:hover{background:#639aff}.btn.danger{background:#401a22;border-color:#6f2634;color:#ffb1bd}.btn.danger:hover{background:#56202b}.btn.ghost{background:transparent}.btn.small{padding:7px 9px;font-size:12px}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:850;letter-spacing:.025em}.badge.up,.badge.ok{background:var(--greenbg);color:#79e5ae}.badge.down,.badge.bad{background:var(--redbg);color:#ff9caa}.badge.waiting,.badge.warn{background:var(--amberbg);color:#ffd36d}.badge.info{background:#172b4e;color:#9bc0ff}.muted{color:var(--muted)}.small{font-size:12px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.notice{border-radius:11px;padding:11px 13px;margin-bottom:13px;border:1px solid}.notice.ok{background:#0f3327;border-color:#285d48;color:#a2ebc8}.notice.warn{background:#34280d;border-color:#66501d;color:#f9d878}.notice.bad{background:#3d1820;border-color:#742c39;color:#ffb2be}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}table{width:100%;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}th,td{padding:10px 10px;text-align:left;border-bottom:1px solid #1d2d46;vertical-align:middle}th{position:sticky;top:0;background:#101c31;color:#99aac1;font-size:10px;text-transform:uppercase;letter-spacing:.07em;font-weight:850;z-index:1;white-space:nowrap}tbody tr:last-child td{border-bottom:0}tbody tr:hover td{background:#112039}.nowrap{white-space:nowrap}.truncate{max-width:210px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tabs{display:flex;gap:6px;flex-wrap:wrap;padding:5px;background:#0b1526;border:1px solid var(--line);border-radius:12px;margin-bottom:16px}.tab{padding:9px 12px;border-radius:9px;color:var(--muted);font-weight:750}.tab:hover,.tab.active{background:#182842;color:#fff}.settings-layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:18px}.settings-nav{position:sticky;top:88px;align-self:start;background:#0d182a;border:1px solid var(--line);border-radius:14px;padding:8px}.settings-nav button{width:100%;text-align:left;border:0;background:transparent;color:var(--muted);padding:11px 12px;border-radius:9px;cursor:pointer;font-weight:730}.settings-nav button:hover,.settings-nav button.active{background:#172742;color:#fff}.settings-section{display:none}.settings-section.active{display:block}.statline{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid #1e2e47}.statline:last-child{border-bottom:0}.empty{text-align:center;color:var(--muted);padding:32px 15px}.kbd{border:1px solid #3a4c68;border-bottom-width:2px;border-radius:6px;padding:2px 6px;font-size:11px;color:#aebdd1;background:#101d32}.footer{margin-top:28px;color:#5f718b;font-size:11px;text-align:center}.login-body{min-height:100vh;display:grid;place-items:center;padding:20px}.login-card{width:min(430px,100%);background:linear-gradient(180deg,#101c31,#0b1628);border:1px solid #263955;border-radius:20px;padding:28px;box-shadow:0 26px 80px rgba(0,0,0,.35)}.login-mark{display:flex;align-items:center;gap:12px;margin-bottom:26px}.login-mark .logo{width:42px;height:42px;border-radius:12px}.login-title{font-size:24px;font-weight:850}.login-sub{color:var(--muted);margin-top:3px}.login-card .field{margin-top:14px}.login-card .btn{width:100%;margin-top:20px;padding:11px}.row-actions{display:flex;gap:5px;white-space:nowrap}.danger-zone{border-color:#572634;background:linear-gradient(180deg,#2a161d,#1c1217)}details.clean>summary{cursor:pointer;color:#c9d5e6;font-weight:750}.codebox{height:210px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.45}.split{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,.7fr);gap:16px}
+@media(max-width:1180px){.cards{grid-template-columns:repeat(3,1fr)}.grid4{grid-template-columns:repeat(2,1fr)}.top-search input{width:160px}.split{grid-template-columns:1fr}}
+@media(max-width:900px){.appbar-inner{flex-wrap:wrap}.top-search{order:3;width:100%;margin-left:0}.top-search input{width:100%}.settings-layout{grid-template-columns:1fr}.settings-nav{position:static;display:grid;grid-template-columns:repeat(3,1fr)}.mainnav{overflow:auto}.userpill{display:none}}
+@media(max-width:680px){.shell{padding:0 13px 28px}.appbar{margin:0 -13px 18px;padding:11px 13px}.cards{grid-template-columns:repeat(2,1fr)}.grid2,.grid3,.grid4{grid-template-columns:1fr}.pagehead{flex-direction:column}.pagehead h1{font-size:26px}.settings-nav{grid-template-columns:1fr 1fr}.brand{font-size:18px}.navlink,.navsummary{padding:8px 9px}}
+@media print{.appbar,.head-actions,.no-print,.settings-nav,.tabs{display:none!important}.shell{max-width:none;padding:0}.panel{box-shadow:none;border-color:#ccc;background:white;color:black}.table-wrap{overflow:visible;border-color:#ccc}body{background:white;color:black}th,td{color:black;border-color:#ddd}th{position:static;background:#f2f2f2}}
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+{% if request.session.get('user') %}
+<div class="shell">
+  <header class="appbar no-print">
+    <div class="appbar-inner">
+      <a class="brand" href="/"><img class="brand-router" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA0MCI+PGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOGZiN2ZmIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+PHBhdGggZD0iTTE1IDEyIDkgM000OSAxMmw2LTkiLz48cmVjdCB4PSI3IiB5PSIxMSIgd2lkdGg9IjUwIiBoZWlnaHQ9IjI1IiByeD0iNyIgZmlsbD0iIzE3MzE1ZCIgc3Ryb2tlPSIjNWM5M2ZmIi8+PHBhdGggZD0iTTE0IDI4aDM2Ii8+PC9nPjxnIGZpbGw9IiM3OWU1YWUiPjxjaXJjbGUgY3g9IjE3IiBjeT0iMjAiIHI9IjIuMiIvPjxjaXJjbGUgY3g9IjI1IiBjeT0iMjAiIHI9IjIuMiIvPjwvZz48ZyBmaWxsPSIjODZhOWRiIj48cmVjdCB4PSIzNCIgeT0iMTgiIHdpZHRoPSI1IiBoZWlnaHQ9IjQiIHJ4PSIxIi8+PHJlY3QgeD0iNDIiIHk9IjE4IiB3aWR0aD0iNSIgaGVpZ2h0PSI0IiByeD0iMSIvPjxyZWN0IHg9IjUwIiB5PSIxOCIgd2lkdGg9IjMiIGhlaWdodD0iNCIgcng9IjEiLz48L2c+PC9zdmc+" alt="Router"><span>Router Vault</span></a>
+      {% set path = request.url.path %}
+      <nav class="mainnav">
+        <a class="navlink {{ 'active' if path == '/' else '' }}" href="/">Dashboard</a>
+        <a class="navlink {{ 'active' if path.startswith('/alerts') else '' }}" href="/alerts">Alerts</a>
+        <a class="navlink {{ 'active' if path.startswith('/reports') else '' }}" href="/reports">Reports</a>
+        {% set rv_modules = module_nav_items(request.session.get('role', 'read_only')) %}
+        {% if rv_modules %}
+        <details class="navgroup">
+          <summary class="navsummary {{ 'active' if path.startswith('/module/') else '' }}">Modules ▾</summary>
+          <div class="navmenu">
+            {% for item in rv_modules %}<a href="{{ item.href }}">{{ item.label }}</a>{% endfor %}
+          </div>
+        </details>
+        {% endif %}
+        {% if request.session.get('role') == 'admin' %}
+        <details class="navgroup">
+          <summary class="navsummary {{ 'active' if path.startswith('/settings') or path.startswith('/users') or path.startswith('/audit') or path.startswith('/administration') else '' }}">Administration ▾</summary>
+          <div class="navmenu">
+            <a href="/administration">Overview</a>
+            <a href="/users">Users &amp; Roles</a>
+            <a href="/audit">Audit Log</a>
+            <a href="/administration/modules">Modules</a>
+            <a href="/settings">Settings</a>
+          </div>
+        </details>
+        {% endif %}
+      </nav>
+      <form class="top-search" method="get" action="/search">
+        <input name="q" value="{{ q if q is defined else '' }}" placeholder="Search Router Vault...">
+      </form>
+      <div class="userpill"><span>{{ request.session.get('user') }}</span><a href="/logout">Logout</a></div>
+    </div>
+  </header>
+  {% block pagehead %}{% endblock %}
+  {% block content %}{% endblock %}
+  <div class="footer no-print">Copyright John Minopoulos 2026 · Router Vault · {{ application_timezone_name() }}</div>
+</div>
+{% else %}
+  {% block anonymous %}{% endblock %}
+{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

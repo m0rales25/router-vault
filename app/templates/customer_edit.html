@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ customer.name }} · Router Vault{% endblock %}
+{% block pagehead %}<div class="pagehead"><div><div class="eyebrow">Administration · Customer</div><h1>Edit Customer</h1><div class="subtitle">Rename the Customer without recreating Devices or Sites.</div></div></div>{% endblock %}
+{% block content %}<div class="panel" style="max-width:760px"><form method="post"><div class="field"><label>Customer name</label><input name="name" value="{{ customer.name }}" required></div><div class="actions"><button class="btn primary">Save Customer</button><a class="btn" href="/customers/{{ customer.id }}">Cancel</a></div></form></div>{% endblock %}

@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RouterVault Login</title>
+<style>
+body{font-family:system-ui;background:#0b1220;color:#e5e7eb;display:grid;place-items:center;height:100vh;margin:0}
+.box{width:340px;background:#111a2e;padding:28px;border:1px solid #28344e;border-radius:16px}
+input{box-sizing:border-box;width:100%;padding:12px;margin:7px 0 15px;border-radius:8px;border:1px solid #384761;background:#0d1628;color:white}
+button{width:100%;padding:12px;border:0;border-radius:8px;font-weight:700;cursor:pointer}
+.err{background:#4c1d1d;padding:10px;border-radius:8px;margin-bottom:12px}
+small{color:#94a3b8}
+</style></head>
+<body><div class="box">
+<h1>{{ app_name }}</h1><small>Administrator login</small>
+{% if error %}<div class="err">{{ error }}</div>{% endif %}
+<form method="post" action="/login">
+<label>Username</label><input name="username" autocomplete="username" required>
+<label>Password</label><input name="password" type="password" autocomplete="current-password" required>
+<button type="submit">Login</button>
+</form></div></body></html>

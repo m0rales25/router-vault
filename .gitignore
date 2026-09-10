@@ -1,0 +1,40 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Certificates / private keys
+gateway/certs/*
+!gateway/certs/.gitkeep
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Backups / archives
+upgrade-backups/
+version-backups/
+*.tar.gz
+*.tgz
+*.zip
+*.rvbackup
+*.sql
+*.dump
+
+# Logs / temp
+*.log
+*.tmp
+*.temp
+.cache/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,105 @@
+
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<title>Edit {{ device.name }}</title>
+
+<style>
+body{
+    font-family:system-ui;
+    background:#0f172a;
+    color:#e2e8f0;
+    margin:0
+}
+
+.wrap{
+    max-width:650px;
+    margin:50px auto;
+    padding:20px
+}
+
+.box{
+    background:#111c33;
+    padding:25px;
+    border-radius:14px;
+    border:1px solid #24324d
+}
+
+input{
+    box-sizing:border-box;
+    width:100%;
+    padding:11px;
+    margin:6px 0 16px;
+    background:#0f172a;
+    color:white;
+    border:1px solid #334155;
+    border-radius:8px
+}
+
+button{
+    padding:12px 18px;
+    font-weight:700;
+    border:0;
+    border-radius:8px;
+    cursor:pointer
+}
+
+a{
+    color:#93c5fd;
+    text-decoration:none
+}
+</style>
+</head>
+
+<body>
+
+<div class="wrap">
+
+<a href="/devices/{{ device.id }}">← Back</a>
+
+<div class="box">
+
+<h1>Edit MikroTik</h1>
+
+<form method="post">
+
+<label>Device Name / Identity</label>
+<input
+    name="device_name"
+    value="{{ device.name }}"
+    required
+>
+
+<label>Customer</label>
+<input
+    name="customer_name"
+    value="{{ customer_name }}"
+>
+
+<label>Site</label>
+<input
+    name="site_name"
+    value="{{ site_name }}"
+>
+
+<label>Model</label>
+<input
+    name="model"
+    value="{{ device.model or '' }}"
+>
+
+<button type="submit">
+Save Changes
+</button>
+
+</form>
+
+</div>
+
+</div>
+
+</body>
+</html>

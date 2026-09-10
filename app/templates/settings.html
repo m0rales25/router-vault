@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Settings · Router Vault{% endblock %}
+{% block pagehead %}
+<div class="pagehead"><div><div class="eyebrow">Administration</div><h1>Settings</h1><div class="subtitle">Configuration is grouped by purpose. No more scrolling through a small novel to find one port.</div></div><div class="head-actions"><a class="btn" href="/administration">Administration</a></div></div>
+{% endblock %}
+{% block content %}
+{% if request.query_params.get('saved') %}<div class="notice ok">Settings saved.</div>{% endif %}
+{% if request.query_params.get('password_changed') %}<div class="notice ok">Admin password changed.</div>{% endif %}
+{% if request.query_params.get('email_sent') %}<div class="notice ok">Test email sent successfully.</div>{% endif %}
+{% if request.query_params.get('report_saved') %}<div class="notice ok">Daily Report settings saved.</div>{% endif %}
+{% if request.query_params.get('deleted') %}<div class="notice ok">Deleted {{ request.query_params.get('deleted') }} backup(s).</div>{% endif %}
+{% if request.query_params.get('admin_access_saved') %}<div class="notice ok">Admin access list updated.</div>{% endif %}
+{% if request.query_params.get('admin_access_lockout') %}<div class="notice bad">Change rejected because it would block your current IP.</div>{% endif %}
+
+<form id="core-settings" method="post" action="/settings"></form>
+<input form="core-settings" type="hidden" name="public_scheme" value="{{ cfg.public_scheme or 'http' }}">
+
+<div class="settings-layout">
+  <aside class="settings-nav no-print">
+    <button type="button" data-section="general">General</button>
+    <button type="button" data-section="monitoring">Monitoring</button>
+    <button type="button" data-section="backups">Backups</button>
+    <button type="button" data-section="notifications">Notifications</button>
+    <button type="button" data-section="security">Access &amp; Security</button>
+    <button type="button" data-section="system">System</button>
+  </aside>
+
+  <main>
+    <section class="settings-section" data-section-panel="general">
+      <div class="panel">
+        <div class="panel-title">Public services</div><div class="panel-sub">Addresses used by Router Vault and the already-established network design.</div>
+        <div class="grid2" style="margin-top:16px">
+          <div class="field"><label>Public IP / hostname</label><input form="core-settings" name="public_host" value="{{ cfg.public_host }}"></div>
+          <div class="field"><label>Router API public port</label><input form="core-settings" name="public_app_port" value="{{ cfg.public_app_port }}"></div>
+          <div class="field"><label>SFTP public port</label><input form="core-settings" name="public_sftp_port" value="{{ cfg.public_sftp_port }}"></div>
+          <div class="field"><label>Admin Web UI</label><input value="https://{{ cfg.public_host }}:8443" readonly></div>
+        </div>
+        <div class="notice warn" style="margin-top:14px">Changing Public host/API/SFTP values changes what future generated installers contain. Existing routers are never modified automatically.</div>
+        <div class="grid2" style="margin-top:16px">
+          <div class="field">
+            <label>Application timezone</label>
+            <input form="core-settings" name="application_timezone" list="timezone-options" value="{{ cfg.application_timezone or 'Europe/Athens' }}" autocomplete="off" required>
+            <datalist id="timezone-options">{% for tz in timezone_options %}<option value="{{ tz }}"></option>{% endfor %}</datalist>
+            <div class="muted small">Used by the UI, Daily Report and backup schedule evaluation. The Linux host may safely remain in UTC.</div>
+          </div>
+          <div class="field">
+            <label>Current application time</label>
+            <input id="settings-app-clock" value="" data-server-ms="{{ system_time_ms }}" data-timezone="{{ application_timezone }}" readonly>
+          </div>
+        </div>
+        <div class="actions"><button class="btn primary" form="core-settings" type="submit">Save General</button></div>
+      </div>
+    </section>
+
+    <section class="settings-section" data-section-panel="monitoring">
+      <div class="panel">
+        <div class="panel-title">Heartbeat &amp; availability</div><div class="panel-sub">Monitoring thresholds used by the server.</div>
+        <div class="grid2" style="margin-top:16px">
+          <div class="field"><label>Heartbeat interval (minutes)</label><input form="core-settings" type="number" min="1" name="heartbeat_interval_minutes" value="{{ cfg.heartbeat_interval_minutes }}"></div>
+          <div class="field"><label>Device DOWN after (minutes)</label><input form="core-settings" type="number" min="1" name="down_after_minutes" value="{{ cfg.down_after_minutes }}"></div>
+          <div class="field"><label>Expected backup hour</label><input form="core-settings" type="number" min="0" max="23" name="backup_expected_hour" value="{{ cfg.backup_expected_hour }}"></div>
+          <div class="field"><label>Expected backup minute</label><input form="core-settings" type="number" min="0" max="59" name="backup_expected_minute" value="{{ cfg.backup_expected_minute }}"></div>
+          <div class="field"><label>Backup grace (minutes)</label><input form="core-settings" type="number" min="0" name="backup_grace_minutes" value="{{ cfg.backup_grace_minutes or 120 }}"></div>
+        </div>
+        <div class="notice warn" style="margin-top:14px">Heartbeat interval is part of the generated MikroTik scheduler. Existing routers keep their current scheduler until you deliberately reinstall their script. DOWN/backup alert thresholds are server-side.</div>
+        <div class="actions"><button class="btn primary" form="core-settings" type="submit">Save Monitoring</button></div>
+      </div>
+    </section>
+
+    <section class="settings-section" data-section-panel="backups">
+      <div class="panel">
+        <div class="panel-title">Retention policy</div><div class="panel-sub">Automatic cleanup is disabled when set to 0.</div>
+        <div class="grid2" style="margin-top:16px"><div class="field"><label>Automatic retention (days)</label><input form="core-settings" type="number" min="0" name="automatic_retention_days" value="{{ cfg.automatic_retention_days }}"></div></div>
+        <div class="actions"><button class="btn primary" form="core-settings" type="submit">Save Retention</button></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Manual cleanup</div><div class="panel-sub">Deletes matching backup objects from PostgreSQL and MinIO.</div>
+        <form method="post" action="/settings/cleanup" onsubmit="return confirm('Delete these backups permanently?')" style="margin-top:14px">
+          <div class="grid4"><div class="field"><label>Older than</label><input type="number" min="1" name="age_value" value="30" required></div><div class="field"><label>Unit</label><select name="age_unit"><option value="days">Days</option><option value="weeks">Weeks</option><option value="months">Months</option><option value="years">Years</option></select></div><div class="field"><label>Customer</label><select id="cleanup_customer" name="customer_id"><option value="">All customers</option>{% for c in customers_list %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div><div class="field"><label>Site</label><select id="cleanup_site" name="site_id"><option value="">All sites</option>{% for s in sites_list %}<option value="{{ s.id }}" data-customer="{{ s.customer_id }}">{{ s.name }}</option>{% endfor %}</select></div><div class="field"><label>Device</label><select id="cleanup_device" name="device_id"><option value="">All devices</option>{% for d in devices_list %}<option value="{{ d.id }}" data-customer="{{ d.customer_id }}" data-site="{{ d.site_id or '' }}">{{ d.name }}</option>{% endfor %}</select></div></div>
+          <div class="actions"><button class="btn danger">Delete old backups</button></div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Bulk download</div><div class="panel-sub">Create a ZIP for a Customer, Site or Device scope.</div>
+        <form method="get" action="/backups/bulk-download" style="margin-top:14px">
+          <div class="grid4"><div class="field"><label>Customer</label><select id="zip_customer" name="customer"><option value="">All customers</option>{% for c in customers_list %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div><div class="field"><label>Site</label><select id="zip_site" name="site"><option value="">All sites</option>{% for s in sites_list %}<option value="{{ s.id }}" data-customer="{{ s.customer_id }}">{{ s.name }}</option>{% endfor %}</select></div><div class="field"><label>Device</label><select id="zip_device" name="device"><option value="">All devices</option>{% for d in devices_list %}<option value="{{ d.id }}" data-customer="{{ d.customer_id }}" data-site="{{ d.site_id or '' }}">{{ d.name }}</option>{% endfor %}</select></div><div class="field"><label>Selection</label><select name="latest_only"><option value="1">Latest backup set per device</option><option value="0">All backups</option></select></div></div>
+          <div class="actions"><button class="btn primary">Download ZIP</button></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="settings-section" data-section-panel="notifications">
+      <div class="panel">
+        <div class="toolbar"><div><div class="panel-title">SMTP / Notifications</div><div class="panel-sub">Email transport for alerts and scheduled reports.</div></div><form method="post" action="/settings/test-email"><button class="btn">Send Test Email</button></form></div>
+        <div class="grid2" style="margin-top:16px">
+          <div class="field"><label>Notification email</label><input form="core-settings" type="email" name="alert_email" value="{{ cfg.alert_email }}"></div><div class="field"><label>SMTP host</label><input form="core-settings" name="smtp_host" value="{{ cfg.smtp_host }}"></div><div class="field"><label>SMTP port</label><input form="core-settings" name="smtp_port" value="{{ cfg.smtp_port }}"></div><div class="field"><label>Security</label><select form="core-settings" name="smtp_security"><option value="starttls" {% if cfg.smtp_security=='starttls' %}selected{% endif %}>STARTTLS</option><option value="ssl" {% if cfg.smtp_security=='ssl' %}selected{% endif %}>SSL/TLS</option><option value="none" {% if cfg.smtp_security=='none' %}selected{% endif %}>None</option></select></div><div class="field"><label>SMTP username</label><input form="core-settings" name="smtp_username" value="{{ cfg.smtp_username }}"></div><div class="field"><label>SMTP password</label><input form="core-settings" type="password" name="smtp_password" placeholder="Leave blank to keep current"></div><div class="field"><label>From email</label><input form="core-settings" type="email" name="smtp_from_email" value="{{ cfg.smtp_from_email }}"></div><div class="field"><label>From name</label><input form="core-settings" name="smtp_from_name" value="{{ cfg.smtp_from_name }}"></div>
+        </div>
+        <div class="actions"><button class="btn primary" form="core-settings" type="submit">Save Notifications</button></div>
+      </div>
+
+      <div class="panel">
+        <div class="toolbar"><div><div class="panel-title">Daily Report</div><div class="panel-sub">One daily status and backup-compliance email, scheduled in {{ application_timezone }}.</div></div>{% if scheduled_report.enabled %}<span class="badge ok">ENABLED</span>{% else %}<span class="badge info">DISABLED</span>{% endif %}</div>
+        <form method="post" action="/settings/scheduled-report" style="margin-top:14px"><div class="grid2"><div class="field"><label>Enabled</label><select name="enabled"><option value="" {% if not scheduled_report.enabled %}selected{% endif %}>Disabled</option><option value="1" {% if scheduled_report.enabled %}selected{% endif %}>Enabled</option></select></div><div class="field"><label>Recipient</label><input type="email" name="recipient" value="{{ scheduled_report.recipient or cfg.alert_email or '' }}"></div><div class="field"><label>Send hour</label><select name="report_hour">{% for h in range(24) %}<option value="{{ h }}" {% if scheduled_report.report_hour|int == h %}selected{% endif %}>{{ '%02d:00'|format(h) }}</option>{% endfor %}</select></div><div class="field"><label>Last sent</label><input value="{{ scheduled_report.last_sent_date or 'Never' }}" readonly></div></div><div class="actions"><button class="btn primary">Save Daily Report</button></div></form>
+      </div>
+    </section>
+
+    <section class="settings-section" data-section-panel="security">
+      <div class="panel" id="admin-access">
+        <div class="toolbar"><div><div class="panel-title">Admin Access / IP Allowlist</div><div class="panel-sub">Only these source networks can open the HTTPS Admin UI.</div></div><span class="badge ok">PROTECTED</span></div>
+        <div class="grid2" style="margin-top:16px"><div class="field"><label>Your current source IP</label><input value="{{ admin_client_ip or 'Unknown' }}" readonly></div><div class="field"><label>Admin HTTPS endpoint</label><input value="https://{{ cfg.public_host }}:8443" readonly></div></div>
+        <div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>Allowed IP / Network</th><th></th></tr></thead><tbody>{% for network in admin_allowlist %}<tr><td class="mono"><strong>{{ network }}</strong></td><td><form method="post" action="/settings/admin-access/remove" onsubmit="return confirm('Remove {{ network }} from Admin access?')"><input type="hidden" name="network" value="{{ network }}"><button class="btn small danger">Remove</button></form></td></tr>{% endfor %}</tbody></table></div>
+        <form method="post" action="/settings/admin-access/add" style="margin-top:14px"><div class="grid2"><div class="field"><label>Add IP / CIDR</label><input name="network" placeholder="1.2.3.4 or 1.2.3.0/24" required></div></div><div class="actions"><button class="btn primary">Add rule</button></div></form>
+      </div>
+
+      <div class="panel"><div class="panel-title">Admin Password</div><form method="post" action="/settings/change-password" style="margin-top:14px"><div class="grid2"><div class="field"><label>New password</label><input type="password" name="new_password" minlength="8" required></div><div class="field"><label>Confirm password</label><input type="password" name="confirm_password" minlength="8" required></div></div><div class="actions"><button class="btn">Change Password</button></div></form></div>
+    </section>
+
+    <section class="settings-section" data-section-panel="system">
+      {% if request.query_params.get('backup_imported') %}<div class="notice ok">Import completed. Source version: <strong>{{ request.query_params.get('source_version') }}</strong> · Portable format: <strong>v{{ request.query_params.get('backup_format') }}</strong>.</div>{% endif %}
+      {% if request.query_params.get('backup_import_error') %}<div class="notice bad">Import failed: {{ request.query_params.get('backup_import_error') }}</div>{% endif %}
+
+      <div class="panel">
+        <div class="toolbar"><div><div class="panel-title">Backup &amp; Restore</div><div class="panel-sub">Portable Router Vault export for migration, recovery and future-version imports.</div></div><span class="badge info">FORMAT v{{ portable_backup_format_version }}</span></div>
+        <div class="grid2" style="margin-top:16px">
+          <div class="panel tight">
+            <div class="panel-title">Config + Database</div>
+            <div class="panel-sub">Exports Customers, Sites, Devices, Users, Settings, Alerts, reports/history metadata and other application records. MikroTik backup files are not included.</div>
+            <div class="actions"><a class="btn primary" href="/settings/backup/export?mode=config_database">Export Config + Database</a></div>
+          </div>
+          <div class="panel tight">
+            <div class="panel-title">Full Portable Backup</div>
+            <div class="panel-sub">Includes Config + Database plus the actual MikroTik backup objects stored in MinIO. Use this for a complete migration.</div>
+            <div class="actions"><a class="btn primary" href="/settings/backup/export?mode=full">Export Full Backup</a></div>
+          </div>
+        </div>
+        <div class="notice warn" style="margin-top:14px">Portable backups contain sensitive application data. Store them securely. Import replaces the current Router Vault logical database. A safety export is created automatically on the server before import.</div>
+        <form method="post" action="/settings/backup/import" enctype="multipart/form-data" onsubmit="return confirm('Import this Router Vault backup? Current application records will be replaced.');">
+          <div class="grid2" style="margin-top:14px"><div class="field"><label>Import .rvbackup</label><input type="file" name="backup_file" accept=".rvbackup,.gz,application/gzip" required></div><div class="field"><label>Compatibility</label><input value="Portable Backup Format v{{ portable_backup_format_version }} · future releases can migrate this format" readonly></div></div>
+          <div class="actions"><button class="btn danger" type="submit">Import Backup</button></div>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Router Vault architecture</div>
+        <div style="margin-top:12px"><div class="statline"><span class="muted">Router API</span><strong class="mono">{{ cfg.public_scheme }}://{{ cfg.public_host }}:{{ cfg.public_app_port }}</strong></div><div class="statline"><span class="muted">Admin Web UI</span><strong class="mono">https://{{ cfg.public_host }}:8443</strong></div><div class="statline"><span class="muted">SFTP ingress</span><strong class="mono">{{ cfg.public_host }}:{{ cfg.public_sftp_port }}</strong></div><div class="statline"><span class="muted">Application timezone</span><strong>{{ application_timezone }}</strong></div><div class="statline"><span class="muted">MinIO Console public exposure</span><span class="badge ok">DISABLED</span></div></div>
+      </div>
+      <div class="notice ok">This release does not change the MikroTik generated script function, script version, API key, SFTP credentials or installed router schedulers.</div>
+    </section>
+  </main>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){const settingsClock=document.getElementById('settings-app-clock');if(settingsClock){const serverMs=Number(settingsClock.dataset.serverMs||Date.now()),clientStart=Date.now(),tz=settingsClock.dataset.timezone||'UTC';const fmt=new Intl.DateTimeFormat('en-GB',{timeZone:tz,day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});const tick=()=>{settingsClock.value=fmt.format(new Date(serverMs+(Date.now()-clientStart))).replace(',', '')+'  '+tz};tick();setInterval(tick,1000);}const buttons=[...document.querySelectorAll('[data-section]')],panels=[...document.querySelectorAll('[data-section-panel]')];function show(name){buttons.forEach(b=>b.classList.toggle('active',b.dataset.section===name));panels.forEach(p=>p.classList.toggle('active',p.dataset.sectionPanel===name));history.replaceState(null,'','#'+name)}const valid=buttons.map(b=>b.dataset.section);let first=(location.hash||'#general').slice(1);if(!valid.includes(first))first='general';buttons.forEach(b=>b.addEventListener('click',()=>show(b.dataset.section)));show(first);
+function cascade(prefix){const c=document.getElementById(prefix+'_customer'),s=document.getElementById(prefix+'_site'),d=document.getElementById(prefix+'_device');if(!c||!s||!d)return;function f(){const cv=c.value;[...s.options].forEach((o,i)=>{if(!i)return;o.hidden=!!cv&&o.dataset.customer!==cv});if(s.selectedOptions[0]?.hidden)s.value='';const sv=s.value;[...d.options].forEach((o,i)=>{if(!i)return;o.hidden=(!!cv&&o.dataset.customer!==cv)||(!!sv&&o.dataset.site!==sv)});if(d.selectedOptions[0]?.hidden)d.value=''}c.addEventListener('change',f);s.addEventListener('change',f);f()}cascade('cleanup');cascade('zip');})();
+</script>
+{% endblock %}
