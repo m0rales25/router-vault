@@ -2,7 +2,7 @@
 
 Router Vault is a self-hosted MikroTik monitoring and backup platform.
 
-This tree is the **V2.0.1 pre-lock release candidate** produced from the reviewed V2 snapshot.
+This tree is based on the **Router Vault V2.0.1 Locked Baseline** and currently includes the **3.0.0-dev Module System foundation**.
 
 ## Compatibility promise for this release
 
@@ -89,6 +89,14 @@ Use the release package installer supplied with this build. The installer:
 
 ## After validation
 
-When RC1 passes production checks, freeze it as:
+The production baseline is:
 
 **Router Vault V2.0.1 – Locked Baseline**
+
+Current development line:
+
+**Router Vault 3.0.0-dev**
+
+Module API:
+
+**v1**
