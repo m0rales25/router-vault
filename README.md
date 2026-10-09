@@ -1,99 +1,247 @@
 # Router Vault
 
-Router Vault is a self-hosted MikroTik monitoring and backup platform.
+Router Vault is a self-hosted MikroTik monitoring, backup and administration platform built for multi-customer / multi-site environments.
 
-This tree is based on the **Router Vault V2.0.1 Locked Baseline** and currently includes the **3.0.0-dev Module System foundation**.
+## Current status
 
-## Compatibility promise for this release
+- **Production baseline:** Router Vault V2.0.1 - Locked Baseline
+- **Current development line:** 3.0.0-dev
+- **Module API:** v1
+- **Primary runtime:** FastAPI + PostgreSQL 17 + MinIO + SFTP + Nginx
+- **Target routers:** MikroTik RouterOS
 
-This release **does not change the generated MikroTik installer function** and does not require existing routers to be re-added or reconfigured.
+The current tree includes the locked V2 production foundation, the 3.0.0-dev module-system foundation, downtime reporting, configurable application timezone support and the October 2026 performance work.
 
-The following remain untouched by the upgrade itself:
+## Compatibility promise
 
-- generated MikroTik script body
+Current server-side upgrades do **not** require existing MikroTik devices to be re-added or reconfigured unless a change explicitly says otherwise.
+
+The following remain protected compatibility points:
+
+- generated MikroTik installer / script body
 - generated script version
 - existing device API keys
-- existing router heartbeat endpoint
-- existing router SFTP credentials
-- existing router scheduler configuration
-- existing public API/SFTP settings
+- heartbeat endpoint used by installed routers
+- SFTP credentials already installed on routers
+- router scheduler configuration
+- public Router API / SFTP settings
 
-Device rename compatibility is handled **server-side** with historical filename aliases learned from existing backup rows.
+Device rename compatibility is handled server-side through historical filename aliases learned from existing backup rows.
 
-## Public architecture
+## Architecture
 
-- Router API: existing public `:8090` -> Router Vault VM `:8000`
-- Admin Web UI: HTTPS `:8443`
-- SFTP backup ingress: existing public `:3334`
-- MinIO Console: internal only, no host `:9001` publication
+### Public services
 
-The API gateway exposes `/api/...` and `/health`. Login and administration routes are not exposed on the API port.
+- **Router API:** public `:8090` -> Router Vault API `:8000`
+- **Admin Web UI:** HTTPS `:8443`
+- **SFTP backup ingress:** public `:3334`
+- **MinIO Console:** internal only
 
-## V2.0.1 RC1 changes
+The API gateway exposes router-facing API routes and `/health`. Administrative access remains behind the HTTPS admin endpoint and its source-IP allowlist.
 
-### UI
+### Core services
 
-- official branding: **Router Vault**
-- new shared responsive layout
-- simplified top navigation: Dashboard / Alerts / Reports / Administration
-- global search in the header
-- combined Reports and Reports V2
-- Settings split into General / Monitoring / Backups / Notifications / Access & Security / System
-- cleaner Device, Customer, Site, Alerts, Users, Audit and Login pages
-- compact and consistent Athens timestamps
+- `api` - FastAPI application and background workers
+- `db` - PostgreSQL 17
+- `minio` - backup object storage
+- `sftp` - MikroTik backup ingress
+- `gateway` - Nginx reverse proxy / TLS endpoint
 
-### Backup reliability
+Persistent application modules are stored under `/srv/routervault-modules`.
 
-- ingest waits for a file to remain stable before hashing/uploading it
-- sanitized-name parsing remains compatible with names such as `protostar(AD122)`
-- device-name alias history keeps old installed router scripts working after a Device rename
-- aliases are backfilled from existing Backup filenames
-- `devices.last_backup_at` is reconciled from the `backups` table
-- backup compliance uses the `backups` table and Europe/Athens time
+## Main features
 
-### Monitoring
+### Device monitoring
 
-- expected backup default aligned to 03:00
-- Daily Report explicitly uses Europe/Athens
-- acknowledgement resets when a genuinely new incident starts
-- orphan alert cleanup remains enabled
+- heartbeat-based UP / DOWN monitoring
+- configurable heartbeat and DOWN thresholds
+- CPU, free-memory, RouterOS version and uptime collection
+- status history
+- device incidents
+- alert acknowledgement and mute controls
+- customer and site scoping
 
-### Device management
+### Downtime reporting
 
-- Add Device now uses Customer/Site IDs for existing records
-- case-insensitive duplicate protection for Customers/Sites
-- Edit Device keeps old filename aliases when a device is renamed
-- Device deletion removes V2 monitoring/script/alias metadata
-- Device deletion always removes its backup DB rows and stored MinIO objects, preventing untracked orphan objects
+Reports include a dedicated **Downtime** view with:
 
-### Security / operations
+- outage count per router
+- recorded downtime
+- average outage duration
+- maximum outage duration
+- availability percentage
+- last DOWN time
+- open / recovered incident state
+- customer, site, device and date filters
+- CSV / XLSX export
+- site-outage correlation for devices that fail together
+- incident drill-down
 
-- Uvicorn access log disabled so device API keys in RouterOS-compatible URL paths are not written to normal access logs
-- MinIO Console is no longer published on host port 9001
-- Admin HTTPS/IP allowlist remains unchanged
-- no secret rotation is performed by this release, specifically to avoid changing already-installed router scripts
+Historical monitoring data is retained. Reports can distinguish current-policy data from older monitoring periods so previous heartbeat-flapping data does not need to be destructively deleted.
 
-## Upgrade
+### Backups
 
-Use the release package installer supplied with this build. The installer:
+- SFTP backup ingestion
+- file-stability check before hash/upload
+- RSC + binary backup-pair integrity checks
+- MinIO object storage
+- latest-backup tracking
+- bulk download
+- retention support
+- portable application backup / restore
+- device-name alias compatibility after router rename
 
-1. creates rollback files and a PostgreSQL schema/data dump
-2. preserves the **live** `router_script()` function byte-for-byte
-3. preserves the live `CURRENT_SCRIPT_VERSION`
-4. installs the consolidated V2 source/UI
-5. changes only the user-facing APP_NAME to `Router Vault`
-6. aligns server-side backup alert schedule to 03:00 when still on the old 04:00 default
-7. rebuilds Router Vault
-8. backfills rename aliases and reconciles Last Backup
-9. runs smoke tests
+### Reports
 
-## After validation
+- overview
+- device inventory
+- backup history
+- backup compliance
+- availability
+- downtime / incidents
+- CSV and XLSX exports
 
-The production baseline is:
+### Administration
 
-**Router Vault V2.0.1 – Locked Baseline**
+- Customers / Sites / Devices
+- Users and roles
+- customer-restricted access
+- global search
+- audit log
+- monitoring settings
+- backup settings
+- notifications / SMTP
+- admin IP allowlist
+- application timezone
+- module management
 
-Current development line:
+## Application timezone
+
+Router Vault uses the configured application timezone for user-facing dates and scheduled reporting.
+
+The default is:
+
+```text
+Europe/Athens
+```
+
+Templates keep some legacy filter names for compatibility, but conversion is based on the configured application timezone rather than a permanently hardcoded timezone.
+
+## Performance
+
+The October 2026 optimization removed several N+1 query patterns and unnecessary request-time work.
+
+Current optimizations include:
+
+- batch 1d / 7d / 30d availability calculation
+- batch backup-compliance / integrity processing
+- batch status-sample / open-incident lookups in the monitoring worker
+- lightweight application-setting cache with invalidation on update
+- database indexes for backup and incident reporting
+- planner statistics refresh
+- removal of unnecessary `last_backup_at` reconciliation from ordinary page views
+
+`devices.last_backup_at` continues to be maintained when backups are ingested, deleted, restored or cleaned up.
+
+## Module system
+
+The development line includes **Module API v1**.
+
+Modules are trusted Python extensions loaded into the API process. They can register UI/routes/hooks according to the module-system contract and declared permissions.
+
+Current permission vocabulary includes:
+
+- `devices.read`
+- `devices.write`
+- `customers.read`
+- `sites.read`
+- `backups.read`
+- `settings.read`
+- `settings.write`
+- `network.generate`
+- `module.storage`
+
+Supported module access roles:
+
+- `admin`
+- `read_only`
+- `customer`
+
+## Security notes
+
+- Repository is intended to remain private.
+- Do not commit `.env`, passwords, API keys, certificates, private keys or database dumps.
+- Uvicorn access logging is disabled for the API container so RouterOS-compatible token-bearing URL paths are not written to the normal access log.
+- MinIO Console is not publicly published.
+- Admin HTTPS access remains protected by the configured IP allowlist.
+- Existing router secrets are not automatically rotated during normal application upgrades.
+
+## Repository layout
+
+```text
+app/                FastAPI application, templates and application logic
+deploy/             Debian deployment helpers
+gateway/            Nginx gateway configuration
+mikrotik/           MikroTik-related project material
+routervault-v2/     historical/reference V2 tree
+docker-compose.yml  production service definition
+Dockerfile          API image build
+requirements.txt    Python dependencies
+VERSION             application version marker
+CHANGELOG.md        development/change history
+```
+
+## Deployment
+
+Typical production rebuild:
+
+```bash
+cd /opt/routervault
+docker compose build api
+docker compose up -d api
+docker compose ps
+```
+
+Health check:
+
+```bash
+curl -fsS http://127.0.0.1:8000/health
+```
+
+Expected response:
+
+```json
+{"status":"ok","service":"Router Vault"}
+```
+
+## Git workflow
+
+Before committing production changes:
+
+```bash
+cd /opt/routervault
+git status
+git diff --check
+docker compose exec -T api python -m compileall -q app
+```
+
+Then stage only the intended files, commit and push:
+
+```bash
+git add <files>
+git commit -m "Describe the change"
+git push origin main
+```
+
+Do not use production-only manual edits as a substitute for source control.
+
+## Production baseline
+
+The locked production foundation remains:
+
+**Router Vault V2.0.1 - Locked Baseline**
+
+Current development continues on:
 
 **Router Vault 3.0.0-dev**
 
