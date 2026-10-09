@@ -3,6 +3,8 @@ import hmac
 import os
 import smtplib
 import ssl
+import threading
+import time
 from zoneinfo import ZoneInfo
 
 from email.message import EmailMessage
@@ -36,42 +38,75 @@ DEFAULTS = {
 }
 
 
+_settings_table_ready = False
+_settings_table_lock = threading.Lock()
+_settings_value_cache = {}
+_settings_value_cache_lock = threading.Lock()
+_settings_value_cache_ttl = 1.0
+
+# RV_PERF_SETTINGS_INIT_V1
 def ensure_settings_table():
-    with SessionLocal() as db:
-        db.execute(text("""
-            CREATE TABLE IF NOT EXISTS app_settings (
-                key VARCHAR(128) PRIMARY KEY,
-                value TEXT NOT NULL DEFAULT ''
-            )
-        """))
-        db.commit()
+    global _settings_table_ready
 
-        for key, value in DEFAULTS.items():
-            db.execute(
-                text("""
-                    INSERT INTO app_settings (key, value)
-                    VALUES (:key, :value)
-                    ON CONFLICT (key) DO NOTHING
-                """),
-                {"key": key, "value": value},
-            )
-        db.commit()
+    if _settings_table_ready:
+        return
 
+    with _settings_table_lock:
+        if _settings_table_ready:
+            return
 
+        with SessionLocal() as db:
+            db.execute(text("""
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key VARCHAR(128) PRIMARY KEY,
+                    value TEXT NOT NULL DEFAULT ''
+                )
+            """))
+
+            for key, value in DEFAULTS.items():
+                db.execute(
+                    text("""
+                        INSERT INTO app_settings (key, value)
+                        VALUES (:key, :value)
+                        ON CONFLICT (key) DO NOTHING
+                    """),
+                    {"key": key, "value": value},
+                )
+
+            db.commit()
+
+        _settings_table_ready = True
+
+# RV_PERF_SETTINGS_CACHE_V1
 def get_setting(key: str, default: str = "") -> str:
+    now = time.monotonic()
+    with _settings_value_cache_lock:
+        cached = _settings_value_cache.get(key)
+        if cached and cached[0] > now:
+            return cached[1]
+
     ensure_settings_table()
     with SessionLocal() as db:
         row = db.execute(
             text("SELECT value FROM app_settings WHERE key=:key"),
             {"key": key},
         ).first()
-        if row:
-            return row[0]
-    return DEFAULTS.get(key, default)
+
+    value = row[0] if row else DEFAULTS.get(key, default)
+
+    with _settings_value_cache_lock:
+        _settings_value_cache[key] = (
+            time.monotonic() + _settings_value_cache_ttl,
+            value,
+        )
+
+    return value
 
 
 def set_setting(key: str, value: str):
     ensure_settings_table()
+    stored = value or ""
+
     with SessionLocal() as db:
         db.execute(
             text("""
@@ -80,20 +115,31 @@ def set_setting(key: str, value: str):
                 ON CONFLICT (key)
                 DO UPDATE SET value=EXCLUDED.value
             """),
-            {"key": key, "value": value or ""},
+            {"key": key, "value": stored},
         )
         db.commit()
+
+    with _settings_value_cache_lock:
+        _settings_value_cache[key] = (
+            time.monotonic() + _settings_value_cache_ttl,
+            stored,
+        )
 
 
 def get_all_settings():
     ensure_settings_table()
     result = dict(DEFAULTS)
+
     with SessionLocal() as db:
         for key, value in db.execute(text("SELECT key, value FROM app_settings")).all():
             result[key] = value
+
+    expires = time.monotonic() + _settings_value_cache_ttl
+    with _settings_value_cache_lock:
+        for key, value in result.items():
+            _settings_value_cache[key] = (expires, value)
+
     return result
-
-
 
 def application_timezone_name():
     name = (get_setting("application_timezone", "Europe/Athens") or "Europe/Athens").strip()

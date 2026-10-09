@@ -3,37 +3,36 @@
 {% block pagehead %}
 <div class="pagehead">
   <div>
-    <div class="eyebrow">Operations</div>
     <h1>Dashboard</h1>
-    <div class="subtitle">Live overview of MikroTik health, backups and customer estate.</div>
+    <div class="subtitle">MikroTik devices, monitoring and backups</div>
   </div>
-  <div class="head-actions no-print" style="align-items:stretch">
-    <div class="btn" style="cursor:default;display:block;text-align:left;min-width:205px">
-      <div class="muted small">System time</div>
-      <strong id="rv-system-clock" data-server-ms="{{ system_time_ms }}" data-timezone="{{ application_timezone }}">--/--/---- --:--:--</strong>
-      <div class="muted small mono" style="margin-top:2px">{{ application_timezone }}</div>
+  <div class="head-actions no-print">
+    <div class="system-clock">
+      <div class="system-clock-label">System time</div>
+      <div class="system-clock-value" id="rv-system-clock" data-server-ms="{{ system_time_ms }}" data-timezone="{{ application_timezone }}">--/--/---- --:--:--</div>
+      <div class="system-clock-zone mono">{{ application_timezone }}</div>
     </div>
     <a class="btn" href="/reports">Reports</a>
-    {% if request.session.get('role') == 'admin' %}<a class="btn primary" href="/devices/new">+ Add Device</a>{% endif %}
+    {% if request.session.get('role') == 'admin' %}<a class="btn primary" href="/devices/new">Add device</a>{% endif %}
   </div>
 </div>
 {% endblock %}
 {% block content %}
 <div class="cards">
-  <div class="metric"><div class="label">Customers</div><div class="value">{{ customers }}</div><div class="hint">Managed accounts</div></div>
-  <div class="metric"><div class="label">Devices</div><div class="value">{{ devices }}</div><div class="hint">In current scope</div></div>
-  <div class="metric"><div class="label">Online</div><div class="value green">{{ up_count }}</div><div class="hint">Heartbeat healthy</div></div>
-  <div class="metric"><div class="label">Down</div><div class="value red">{{ down_count }}</div><div class="hint">Over {{ down_after }} min</div></div>
-  <div class="metric"><div class="label">Backup Issues</div><div class="value {{ 'amber' if missing_backup_count else 'green' }}">{{ missing_backup_count }}</div><div class="hint">Missing / partial set</div></div>
-  <div class="metric"><div class="label">Active Alerts</div><div class="value {{ 'red' if active_alert_count else 'green' }}">{{ active_alert_count }}</div><div class="hint">Needs attention</div></div>
+  <div class="metric"><div class="label">Customers</div><div class="value">{{ customers }}</div></div>
+  <div class="metric"><div class="label">Devices</div><div class="value">{{ devices }}</div></div>
+  <div class="metric"><div class="label">Online</div><div class="value green">{{ up_count }}</div></div>
+  <div class="metric"><div class="label">Offline</div><div class="value {{ 'red' if down_count else '' }}">{{ down_count }}</div></div>
+  <div class="metric"><div class="label">Backup issues</div><div class="value {{ 'amber' if missing_backup_count else 'green' }}">{{ missing_backup_count }}</div></div>
+  <div class="metric"><div class="label">Open alerts</div><div class="value {{ 'red' if active_alert_count else 'green' }}">{{ active_alert_count }}</div></div>
 </div>
 
 <div class="panel no-print">
-  <div class="toolbar">
-    <div><div class="panel-title">Filter devices</div><div class="panel-sub">Narrow the view without losing the estate summary.</div></div>
-    <span class="badge info">{{ device_rows|length }} shown</span>
+  <div class="dashboard-filter-head">
+    <div class="panel-title">Filters</div>
+    <div class="dashboard-count">{{ device_rows|length }} of {{ devices }} devices</div>
   </div>
-  <form method="get" action="/" style="margin-top:14px">
+  <form method="get" action="/">
     <div class="grid4">
       <div class="field"><label>Customer</label><select id="customer" name="customer"><option value="">All customers</option>{% for c in customers_list %}<option value="{{ c.id }}" {% if filters.customer==c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>
       <div class="field"><label>Site</label><select id="site" name="site"><option value="">All sites</option>{% for s in sites_list %}<option value="{{ s.id }}" data-customer="{{ s.customer_id }}" {% if filters.site==s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select></div>
@@ -41,16 +40,16 @@
       <div class="field"><label>Status</label><select name="status"><option value="">All statuses</option>{% for st in ['UP','DOWN','WAITING'] %}<option value="{{ st }}" {% if filters.status==st %}selected{% endif %}>{{ st }}</option>{% endfor %}</select></div>
       <div class="field"><label>RouterOS</label><input name="routeros" value="{{ filters.routeros }}" placeholder="6.49 / 7.x"></div>
       <div class="field"><label>Model</label><input name="model" value="{{ filters.model }}" placeholder="CCR / CRS / hAP"></div>
-      <div class="field"><label>Search</label><input name="q" value="{{ filters.q }}" placeholder="Name, customer, site..."></div>
+      <div class="field"><label>Search</label><input name="q" value="{{ filters.q }}" placeholder="Device, customer or site"></div>
     </div>
-    <div class="actions"><button class="btn primary" type="submit">Apply filters</button><a class="btn" href="/">Clear</a></div>
+    <div class="actions"><button class="btn primary" type="submit">Apply</button><a class="btn" href="/">Reset</a></div>
   </form>
 </div>
 
 <div class="panel">
-  <div class="toolbar" style="margin-bottom:12px">
-    <div><div class="panel-title">Devices</div><div class="panel-sub">Click a device for backups, history and installation details.</div></div>
-    <div class="muted small">{{ backups }} stored backup files</div>
+  <div class="toolbar" style="margin-bottom:10px">
+    <div class="panel-title">Devices</div>
+    <div class="muted small">{{ backups }} backup files</div>
   </div>
   <div class="table-wrap">
     <table id="device-table">
@@ -73,7 +72,7 @@
         <td>{% if row.status=='UP' %}<span class="badge up">UP</span>{% elif row.status=='DOWN' %}<span class="badge down">DOWN</span>{% else %}<span class="badge waiting">WAITING</span>{% endif %}</td>
         <td class="no-print"><div class="row-actions">{% if request.session.get('role') == 'admin' %}<a class="btn small" href="/devices/{{ d.id }}/edit">Edit</a><a class="btn small danger" href="/devices/{{ d.id }}/delete-confirm">Delete</a>{% else %}<span class="muted small">Read only</span>{% endif %}</div></td>
       </tr>
-      {% else %}<tr><td colspan="12" class="empty">No devices match the selected filters.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="12" class="empty">No matching devices.</td></tr>{% endfor %}
       </tbody>
     </table>
   </div>

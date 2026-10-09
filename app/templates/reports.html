@@ -1,3 +1,4 @@
+{# RV_PERF_REPORTS_V1 #}
 {% extends "base.html" %}
 {% block title %}Reports · Router Vault{% endblock %}
 {% block pagehead %}
@@ -11,6 +12,7 @@
   <a class="tab {{ 'active' if report_type=='overview' else '' }}" href="/reports?type=overview">Overview</a>
   <a class="tab {{ 'active' if report_type=='devices' else '' }}" href="/reports?type=devices">Devices</a>
   <a class="tab {{ 'active' if report_type=='backups' else '' }}" href="/reports?type=backups">Backups</a>
+  <a class="tab" href="/reports/downtime">Downtime</a>
 </div>
 
 {% if report_type == 'overview' %}
@@ -42,7 +44,7 @@
 
   <div class="panel">
     <div class="panel-title">Availability</div>
-    <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Device</th><th>1 day</th><th>7 days</th><th>30 days</th></tr></thead><tbody>{% for d in devices_list %}<tr><td><a href="/devices/{{ d.id }}"><strong>{{ d.name }}</strong></a></td><td>{{ availability(d.id,1) if availability(d.id,1) is not none else '-' }}{% if availability(d.id,1) is not none %}%{% endif %}</td><td>{{ availability(d.id,7) if availability(d.id,7) is not none else '-' }}{% if availability(d.id,7) is not none %}%{% endif %}</td><td>{{ availability(d.id,30) if availability(d.id,30) is not none else '-' }}{% if availability(d.id,30) is not none %}%{% endif %}</td></tr>{% else %}<tr><td colspan="4" class="empty">No devices.</td></tr>{% endfor %}</tbody></table></div>
+    <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Device</th><th>1 day</th><th>7 days</th><th>30 days</th></tr></thead><tbody>{% for d in devices_list %}<tr><td><a href="/devices/{{ d.id }}"><strong>{{ d.name }}</strong></a></td><td>{{ availability_map.get(d.id|string, {}).get(1) if availability_map.get(d.id|string, {}).get(1) is not none else '-' }}{% if availability_map.get(d.id|string, {}).get(1) is not none %}%{% endif %}</td><td>{{ availability_map.get(d.id|string, {}).get(7) if availability_map.get(d.id|string, {}).get(7) is not none else '-' }}{% if availability_map.get(d.id|string, {}).get(7) is not none %}%{% endif %}</td><td>{{ availability_map.get(d.id|string, {}).get(30) if availability_map.get(d.id|string, {}).get(30) is not none else '-' }}{% if availability_map.get(d.id|string, {}).get(30) is not none %}%{% endif %}</td></tr>{% else %}<tr><td colspan="4" class="empty">No devices.</td></tr>{% endfor %}</tbody></table></div>
   </div>
 {% else %}
   <div class="panel no-print">

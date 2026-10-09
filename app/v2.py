@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from io import BytesIO
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import text, select, func
+from sqlalchemy import text, select, func, bindparam
 from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
@@ -73,6 +73,8 @@ def ensure_v2_tables():
             )
         """))
         db.execute(text("CREATE INDEX IF NOT EXISTS ix_incidents_device_time ON device_incidents(device_id, opened_at DESC)"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS ix_backups_device_created ON backups(device_id, created_at DESC)"))
+        db.execute(text("CREATE INDEX IF NOT EXISTS ix_incidents_type_device_opened ON device_incidents(incident_type, device_id, opened_at DESC)"))
         db.execute(text("""
             CREATE TABLE IF NOT EXISTS device_script_state (
                 device_id VARCHAR(36) PRIMARY KEY,
@@ -205,6 +207,7 @@ def _status(device: Device, down_minutes: int):
     return "UP" if (utcnow() - seen).total_seconds() <= down_minutes * 60 else "DOWN"
 
 
+# RV_PERF_SAMPLE_BATCH_V1
 def sample_and_incidents():
     try:
         down_minutes = max(1, int(get_setting("down_after_minutes", "5") or "5"))
@@ -212,12 +215,47 @@ def sample_and_incidents():
     except Exception:
         down_minutes, sample_minutes = 5, 5
 
+    now = utcnow()
+
     with SessionLocal() as db:
         devices = db.scalars(select(Device).where(Device.enabled == True)).all()
+        ids = [str(d.id) for d in devices]
+
+        latest_samples = {}
+        open_incidents = {}
+
+        if ids:
+            latest_stmt = text("""
+                SELECT DISTINCT ON (device_id)
+                    device_id, status, created_at
+                FROM device_status_samples
+                WHERE device_id IN :ids
+                ORDER BY device_id, created_at DESC
+            """).bindparams(bindparam("ids", expanding=True))
+            latest_samples = {
+                str(r["device_id"]): r
+                for r in db.execute(latest_stmt, {"ids": ids}).mappings().all()
+            }
+
+            incident_stmt = text("""
+                SELECT DISTINCT ON (device_id)
+                    id, device_id, incident_type, opened_at
+                FROM device_incidents
+                WHERE device_id IN :ids
+                  AND closed_at IS NULL
+                ORDER BY device_id, opened_at DESC
+            """).bindparams(bindparam("ids", expanding=True))
+            open_incidents = {
+                str(r["device_id"]): r
+                for r in db.execute(incident_stmt, {"ids": ids}).mappings().all()
+            }
+
         for d in devices:
+            did = str(d.id)
             state = _status(d, down_minutes)
-            last = db.execute(text("SELECT status,created_at FROM device_status_samples WHERE device_id=:d ORDER BY created_at DESC LIMIT 1"), {"d": d.id}).mappings().first()
-            if not last or (utcnow() - last["created_at"]).total_seconds() >= sample_minutes * 60:
+            last = latest_samples.get(did)
+
+            if not last or (now - last["created_at"]).total_seconds() >= sample_minutes * 60:
                 try:
                     cpu = int(d.cpu_load) if d.cpu_load is not None else None
                 except Exception:
@@ -226,28 +264,45 @@ def sample_and_incidents():
                     mem = int(d.free_memory) if d.free_memory is not None else None
                 except Exception:
                     mem = None
-                db.execute(text("INSERT INTO device_status_samples(device_id,status,cpu,free_memory) VALUES(:d,:s,:c,:m)"), {"d": d.id, "s": state, "c": cpu, "m": mem})
 
-            open_incident = db.execute(text("SELECT id,incident_type,opened_at FROM device_incidents WHERE device_id=:d AND closed_at IS NULL ORDER BY opened_at DESC LIMIT 1"), {"d": d.id}).mappings().first()
+                db.execute(
+                    text("INSERT INTO device_status_samples(device_id,status,cpu,free_memory) VALUES(:d,:s,:c,:m)"),
+                    {"d": d.id, "s": state, "c": cpu, "m": mem},
+                )
+
+            open_incident = open_incidents.get(did)
+
             if state == "DOWN" and not open_incident:
-                db.execute(text("INSERT INTO device_incidents(device_id,incident_type,opened_at,details) VALUES(:d,'down',NOW(),'Heartbeat timeout')"), {"d": d.id})
+                db.execute(
+                    text("INSERT INTO device_incidents(device_id,incident_type,opened_at,details) VALUES(:d,'down',NOW(),'Heartbeat timeout')"),
+                    {"d": d.id},
+                )
             elif state != "DOWN" and open_incident and open_incident["incident_type"] == "down":
-                now = utcnow()
                 opened = open_incident["opened_at"]
                 if opened.tzinfo is None:
                     opened = opened.replace(tzinfo=timezone.utc)
-                db.execute(text("UPDATE device_incidents SET closed_at=:n,duration_seconds=:dur WHERE id=:id"), {"n": now, "dur": int((now-opened).total_seconds()), "id": open_incident["id"]})
+                db.execute(
+                    text("UPDATE device_incidents SET closed_at=:n,duration_seconds=:dur WHERE id=:id"),
+                    {
+                        "n": now,
+                        "dur": int((now - opened).total_seconds()),
+                        "id": open_incident["id"],
+                    },
+                )
+
         db.commit()
 
-    # history retention
     try:
         days = max(1, int(get_setting("history_retention_days", "30") or "30"))
     except Exception:
         days = 30
-    with SessionLocal() as db:
-        db.execute(text("DELETE FROM device_status_samples WHERE created_at < NOW() - (:days * INTERVAL '1 day')"), {"days": days})
-        db.commit()
 
+    with SessionLocal() as db:
+        db.execute(
+            text("DELETE FROM device_status_samples WHERE created_at < NOW() - (:days * INTERVAL '1 day')"),
+            {"days": days},
+        )
+        db.commit()
 
 def availability(device_id: str, days: int = 30):
     cutoff = utcnow() - timedelta(days=days)
@@ -259,6 +314,62 @@ def availability(device_id: str, days: int = 30):
     return round(100.0 * up / len(rows), 2)
 
 
+# RV_PERF_AVAILABILITY_BATCH_V1
+def availability_many(devices, periods=(1, 7, 30)):
+    ids = [str(d.id) for d in devices]
+    clean_periods = tuple(sorted({max(1, int(x)) for x in periods}))
+    result = {
+        device_id: {days: None for days in clean_periods}
+        for device_id in ids
+    }
+
+    if not ids or not clean_periods:
+        return result
+
+    now = utcnow()
+    params = {"ids": ids}
+    fields = []
+
+    for days in clean_periods:
+        key = f"c_{days}"
+        params[key] = now - timedelta(days=days)
+        fields.append(
+            f"COUNT(*) FILTER (WHERE created_at >= :{key}) AS total_{days}"
+        )
+        fields.append(
+            f"COUNT(*) FILTER (WHERE created_at >= :{key} AND status='UP') AS up_{days}"
+        )
+
+    oldest = max(clean_periods)
+    params["oldest"] = now - timedelta(days=oldest)
+
+    stmt = text(f"""
+        SELECT
+            device_id,
+            {', '.join(fields)}
+        FROM device_status_samples
+        WHERE device_id IN :ids
+          AND created_at >= :oldest
+        GROUP BY device_id
+    """).bindparams(bindparam("ids", expanding=True))
+
+    with SessionLocal() as db:
+        rows = db.execute(stmt, params).mappings().all()
+
+    for row in rows:
+        device_id = str(row["device_id"])
+        bucket = result.setdefault(
+            device_id,
+            {days: None for days in clean_periods},
+        )
+        for days in clean_periods:
+            total = int(row[f"total_{days}"] or 0)
+            up = int(row[f"up_{days}"] or 0)
+            bucket[days] = round(100.0 * up / total, 2) if total else None
+
+    return result
+
+
 def device_history(device_id: str, hours: int = 24):
     cutoff = utcnow() - timedelta(hours=hours)
     with SessionLocal() as db:
@@ -267,58 +378,97 @@ def device_history(device_id: str, hours: int = 24):
     return samples, incidents
 
 
-def backup_integrity(device_id: str):
-    with SessionLocal() as db:
-        backups = db.scalars(select(Backup).where(Backup.device_id == device_id).order_by(Backup.created_at.desc()).limit(10)).all()
+# RV_PERF_BACKUP_BATCH_V1
+def _backup_integrity_from_rows(backups):
     if not backups:
         return {"status": "MISSING", "run": None, "rsc": False, "binary": False, "valid": False}
+
     first = backups[0]
     name = first.filename
+
     if "__config.rsc" in name:
-        run = name.rsplit("__config.rsc",1)[0]
+        run = name.rsplit("__config.rsc", 1)[0]
     elif "__full.backup" in name:
-        run = name.rsplit("__full.backup",1)[0]
+        run = name.rsplit("__full.backup", 1)[0]
     else:
         run = name
+
     same = [b for b in backups if b.filename.startswith(run)]
-    rsc = any(b.filename.endswith("__config.rsc") and b.size_bytes > 0 and len(b.sha256 or "") >= 32 for b in same)
-    binary = any(b.filename.endswith("__full.backup") and b.size_bytes > 0 and len(b.sha256 or "") >= 32 for b in same)
+    rsc = any(
+        b.filename.endswith("__config.rsc")
+        and b.size_bytes > 0
+        and len(b.sha256 or "") >= 32
+        for b in same
+    )
+    binary = any(
+        b.filename.endswith("__full.backup")
+        and b.size_bytes > 0
+        and len(b.sha256 or "") >= 32
+        for b in same
+    )
     valid = rsc and binary
-    return {"status": "OK" if valid else "PARTIAL", "run": run, "rsc": rsc, "binary": binary, "valid": valid}
+
+    return {
+        "status": "OK" if valid else "PARTIAL",
+        "run": run,
+        "rsc": rsc,
+        "binary": binary,
+        "valid": valid,
+    }
+
+
+def backup_integrity(device_id: str):
+    with SessionLocal() as db:
+        backups = db.scalars(
+            select(Backup)
+            .where(Backup.device_id == device_id)
+            .order_by(Backup.created_at.desc())
+            .limit(10)
+        ).all()
+    return _backup_integrity_from_rows(backups)
 
 
 def backup_compliance(devices):
-    today = datetime.now(application_timezone()).date()
+    app_tz = application_timezone()
+    today = datetime.now(app_tz).date()
     ids = [str(d.id) for d in devices]
+    recent = {device_id: [] for device_id in ids}
     latest_map = {}
 
     if ids:
         with SessionLocal() as db:
-            rows = db.execute(
-                select(Backup.device_id, func.max(Backup.created_at))
+            backups = db.scalars(
+                select(Backup)
                 .where(Backup.device_id.in_(ids))
-                .group_by(Backup.device_id)
+                .order_by(Backup.device_id, Backup.created_at.desc())
             ).all()
-            latest_map = {str(device_id): created_at for device_id, created_at in rows}
+
+        for backup in backups:
+            device_id = str(backup.device_id)
+            latest_map.setdefault(device_id, backup.created_at)
+            bucket = recent.setdefault(device_id, [])
+            if len(bucket) < 10:
+                bucket.append(backup)
 
     out = []
     for d in devices:
-        last = latest_map.get(str(d.id))
+        device_id = str(d.id)
+        last = latest_map.get(device_id)
         ok = False
+
         if last:
             if last.tzinfo is None:
                 last = last.replace(tzinfo=timezone.utc)
-            ok = last.astimezone(application_timezone()).date() == today
+            ok = last.astimezone(app_tz).date() == today
 
-        integrity = backup_integrity(d.id)
         out.append({
             "device": d,
             "today": ok,
-            "integrity": integrity,
+            "integrity": _backup_integrity_from_rows(recent.get(device_id, [])),
             "last_backup_at": last,
         })
-    return out
 
+    return out
 
 def acknowledge_alert(alert_key: str, username: str):
     with SessionLocal() as db:

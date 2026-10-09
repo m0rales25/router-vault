@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Downtime · Router Vault{% endblock %}
+{% block pagehead %}
+<div class="pagehead">
+  <div><div class="eyebrow">Reports</div><h1>Downtime</h1><div class="subtitle">Router incidents, downtime duration and correlated Site outages.</div></div>
+  <div class="head-actions no-print">
+    <a class="btn" href="/reports/downtime.csv?customer={{ filters.customer }}&site={{ filters.site }}&device={{ filters.device }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&history={{ filters.history }}">CSV</a>
+    <a class="btn" href="/reports/downtime.xlsx?customer={{ filters.customer }}&site={{ filters.site }}&device={{ filters.device }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&history={{ filters.history }}">Excel</a>
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+<div class="tabs no-print">
+  <a class="tab" href="/reports?type=overview">Overview</a>
+  <a class="tab" href="/reports?type=devices">Devices</a>
+  <a class="tab" href="/reports?type=backups">Backups</a>
+  <a class="tab active" href="/reports/downtime">Downtime</a>
+</div>
+
+{% if not data.historical and data.baseline %}
+<div class="notice ok">Current policy data starts at <strong>{{ data.baseline|athens_fmt }}</strong>. Incidents before this baseline used the previous monitoring threshold and are excluded from the default view.</div>
+{% elif data.historical %}
+<div class="notice warn">Historical view includes incidents recorded under earlier monitoring thresholds. Short incidents may include heartbeat false positives.</div>
+{% endif %}
+
+<div class="panel no-print">
+  <div class="toolbar">
+    <div><div class="panel-title">Period and scope</div><div class="panel-sub">Blank dates use the current monitoring-policy baseline.</div></div>
+    <div class="actions" style="margin:0">
+      <a class="btn small" href="/reports/downtime">Current policy</a>
+      <a class="btn small" href="/reports/downtime?date_from={{ date_7 }}&date_to={{ today }}&history=1">7 days</a>
+      <a class="btn small" href="/reports/downtime?date_from={{ date_30 }}&date_to={{ today }}&history=1">30 days</a>
+      <a class="btn small" href="/reports/downtime?history=1">Historical</a>
+    </div>
+  </div>
+  <form method="get" action="/reports/downtime" style="margin-top:14px">
+    <input type="hidden" name="history" value="{{ filters.history }}">
+    <div class="grid4">
+      <div class="field"><label>Customer</label><select id="r_customer" name="customer"><option value="">All customers</option>{% for c in customers_list %}<option value="{{ c.id }}" {% if filters.customer==c.id|string %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Site</label><select id="r_site" name="site"><option value="">All sites</option>{% for s in sites_list %}<option value="{{ s.id }}" data-customer="{{ s.customer_id }}" {% if filters.site==s.id|string %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Router</label><select id="r_device" name="device"><option value="">All routers</option>{% for d in devices_list %}<option value="{{ d.id }}" data-customer="{{ d.customer_id }}" data-site="{{ d.site_id or '' }}" {% if filters.device==d.id|string %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
+      <div class="field"><label>From</label><input type="date" name="date_from" value="{{ filters.date_from }}"></div>
+      <div class="field"><label>To</label><input type="date" name="date_to" value="{{ filters.date_to }}"></div>
+    </div>
+    <div class="actions"><button class="btn primary">Apply</button><a class="btn" href="/reports/downtime">Clear</a><button class="btn" type="button" onclick="window.print()">Print</button></div>
+  </form>
+</div>
+
+<div class="cards" style="grid-template-columns:repeat(5,minmax(140px,1fr))">
+  <div class="metric"><div class="label">Affected routers</div><div class="value">{{ data.summary.affected_routers }}</div><div class="hint">Routers with incidents</div></div>
+  <div class="metric"><div class="label">Down events</div><div class="value {{ 'red' if data.summary.incidents else 'green' }}">{{ data.summary.incidents }}</div><div class="hint">Incident count</div></div>
+  <div class="metric"><div class="label">Device downtime</div><div class="value">{{ data.summary.total_label }}</div><div class="hint">Sum across routers</div></div>
+  <div class="metric"><div class="label">Site outages</div><div class="value {{ 'amber' if data.summary.site_outages else 'green' }}">{{ data.summary.site_outages }}</div><div class="hint">2+ routers correlated</div></div>
+  <div class="metric"><div class="label">Worst router</div><div class="value" style="font-size:20px">{{ data.summary.worst_router }}</div><div class="hint">{{ data.summary.worst_label }}</div></div>
+</div>
+
+<div class="panel">
+  <div class="toolbar"><div><div class="panel-title">Router incidents</div><div class="panel-sub">{{ data.routers|length }} router(s) in the selected period.</div></div></div>
+  <div class="table-wrap" style="margin-top:12px"><table>
+    <thead><tr><th>Customer</th><th>Site</th><th>Router</th><th>Events</th><th>Total</th><th>Average</th><th>Maximum</th><th>Availability</th><th>Last down</th><th>State</th></tr></thead>
+    <tbody>{% for row in data.routers %}<tr>
+      <td>{{ row.customer_name }}</td><td>{{ row.site_name }}</td><td><a href="/devices/{{ row.device_id }}"><strong>{{ row.device_name }}</strong></a></td>
+      <td><strong>{{ row.events }}</strong></td><td>{{ row.total_label }}</td><td>{{ row.avg_label }}</td><td>{{ row.max_label }}</td>
+      <td>{% if row.availability is not none %}{{ '%.4f'|format(row.availability) }}%{% else %}-{% endif %}</td>
+      <td class="nowrap">{{ row.last_down|athens_fmt if row.last_down else '-' }}</td>
+      <td>{% if row.open_events %}<span class="badge bad">DOWN</span>{% else %}<span class="badge ok">RECOVERED</span>{% endif %}</td>
+    </tr>{% else %}<tr><td colspan="10" class="empty">No downtime incidents in this period.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="panel">
+  <div class="toolbar"><div><div class="panel-title">Site outages</div><div class="panel-sub">Incidents affecting at least two routers at the same Site within a 3-minute correlation window.</div></div></div>
+  <div class="table-wrap" style="margin-top:12px"><table>
+    <thead><tr><th>Customer</th><th>Site</th><th>Start</th><th>End</th><th>Duration</th><th>Affected</th><th>Routers</th><th>State</th></tr></thead>
+    <tbody>{% for row in data.site_outages %}<tr>
+      <td>{{ row.customer_name }}</td><td><strong>{{ row.site_name }}</strong></td><td class="nowrap">{{ row.start|athens_fmt }}</td><td class="nowrap">{{ row.end|athens_fmt }}</td><td>{{ row.duration_label }}</td><td>{{ row.affected }}</td><td class="small">{{ row.devices }}</td><td>{% if row.open %}<span class="badge bad">OPEN</span>{% else %}<span class="badge ok">CLOSED</span>{% endif %}</td>
+    </tr>{% else %}<tr><td colspan="8" class="empty">No correlated Site outages in this period.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<details class="panel">
+  <summary><strong>Incident detail</strong> · {{ data.incidents|length }} row(s)</summary>
+  <div class="table-wrap" style="margin-top:12px"><table>
+    <thead><tr><th>Customer</th><th>Site</th><th>Router</th><th>Opened</th><th>Closed</th><th>Duration</th><th>State</th></tr></thead>
+    <tbody>{% for row in data.incidents %}<tr><td>{{ row.customer_name }}</td><td>{{ row.site_name }}</td><td>{{ row.device_name }}</td><td class="nowrap">{{ row.opened_at|athens_fmt }}</td><td class="nowrap">{{ row.closed_at|athens_fmt if row.closed_at else '-' }}</td><td>{{ row.duration_label }}</td><td>{% if row.is_open %}<span class="badge bad">OPEN</span>{% else %}<span class="badge ok">CLOSED</span>{% endif %}</td></tr>{% else %}<tr><td colspan="7" class="empty">No incidents.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</details>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){const c=document.getElementById('r_customer'),s=document.getElementById('r_site'),d=document.getElementById('r_device');if(!c||!s||!d)return;function f(){const cv=c.value;[...s.options].forEach((o,i)=>{if(!i)return;o.hidden=!!cv&&o.dataset.customer!==cv});if(s.selectedOptions[0]?.hidden)s.value='';const sv=s.value;[...d.options].forEach((o,i)=>{if(!i)return;o.hidden=(!!cv&&o.dataset.customer!==cv)||(!!sv&&o.dataset.site!==sv)});if(d.selectedOptions[0]?.hidden)d.value=''}c.addEventListener('change',f);s.addEventListener('change',f);f()})();
+</script>
+{% endblock %}

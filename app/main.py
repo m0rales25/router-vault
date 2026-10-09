@@ -8,7 +8,7 @@ import os
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo, available_timezones
 
 from fastapi import FastAPI, Depends, HTTPException, Header, Request, Form, UploadFile, File
@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse,
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.background import BackgroundTask
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -63,7 +63,7 @@ from app.v2 import (
     CURRENT_SCRIPT_VERSION, ensure_v2_tables, start_v2_worker, authenticate_user,
     create_user as v2_create_user, list_users as v2_list_users, set_user_enabled as v2_set_user_enabled,
     audit as v2_audit, recent_audit as v2_recent_audit, record_script_version, get_script_state,
-    availability as v2_availability, device_history as v2_device_history, backup_integrity as v2_backup_integrity,
+    availability as v2_availability, availability_many as v2_availability_many, device_history as v2_device_history, backup_integrity as v2_backup_integrity,
     backup_compliance as v2_backup_compliance, alert_rows as v2_alert_rows,
     acknowledge_alert as v2_ack_alert, mute_alert as v2_mute_alert, xlsx_bytes as v2_xlsx_bytes,
     get_scheduled_report as v2_get_scheduled_report, save_scheduled_report as v2_save_scheduled_report,
@@ -80,6 +80,7 @@ from app.module_system import (
 )
 
 
+# RV_PERF_MAIN_V1
 templates = Jinja2Templates(directory="app/templates")
 configure_core_templates(templates)
 templates.env.globals["module_nav_items"] = rv_module_nav_items
@@ -542,7 +543,6 @@ def dashboard(
     if not logged_in(request):
         return RedirectResponse("/login", status_code=302)
 
-    reconcile_last_backup_cache()
     now = datetime.now(timezone.utc)
     customers_list = db.scalars(select(Customer).order_by(Customer.name)).all()
     sites_list = db.scalars(select(Site).order_by(Site.name)).all()
@@ -1140,7 +1140,6 @@ def reports_page(
     if not logged_in(request):
         return RedirectResponse("/login", status_code=302)
 
-    reconcile_last_backup_cache()
     report_type = type if type in {"overview", "devices", "backups"} else "overview"
     scope_customer = restricted_customer_scope(request)
     if scope_customer:
@@ -1172,6 +1171,8 @@ def reports_page(
         if cpu >= 80:
             high_cpu.append(item)
 
+    availability_map = v2_availability_many(overview_devices, (1, 7, 30))
+
     return templates.TemplateResponse(
         request=request,
         name="reports.html",
@@ -1192,6 +1193,7 @@ def reports_page(
             "versions": versions,
             "high_cpu": high_cpu,
             "availability": v2_availability,
+            "availability_map": availability_map,
             "device_status": device_status,
             "customer_map": {str(c.id): c for c in customers},
             "site_map": {str(x.id): x for x in sites},
@@ -1217,7 +1219,6 @@ def reports_csv(
     if not logged_in(request):
         return RedirectResponse("/login", status_code=302)
 
-    reconcile_last_backup_cache()
     report_type = "backups" if type == "backups" else "devices"
     scope_customer = restricted_customer_scope(request)
     if scope_customer:
@@ -1267,6 +1268,415 @@ def reports_csv(
         content=out.getvalue(),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# RV_DOWNTIME_REPORT_V1
+
+def _rv_dt_utc(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except Exception:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _rv_duration_label(seconds):
+    seconds = max(0, int(seconds or 0))
+    days, rem = divmod(seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, secs = divmod(rem, 60)
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m {secs}s" if secs else f"{minutes}m"
+    return f"{secs}s"
+
+
+def _rv_downtime_window(date_from="", date_to="", historical=False):
+    now = datetime.now(timezone.utc)
+    baseline_raw = (rv_get_setting("monitoring_report_baseline_at", "") or "").strip()
+    baseline = _rv_dt_utc(baseline_raw)
+
+    start = parse_local_date_start(date_from) if date_from else None
+    end = parse_local_date_end(date_to) if date_to else now
+
+    if not start and not historical:
+        start = baseline or now
+
+    if end > now:
+        end = now
+    if start and end < start:
+        raise HTTPException(400, "To date must be after From date")
+
+    return start, end, baseline, now
+
+
+def _rv_downtime_report_data(
+    db: Session,
+    customer="",
+    site="",
+    device="",
+    date_from="",
+    date_to="",
+    historical=False,
+):
+    start, end, baseline, now = _rv_downtime_window(
+        date_from, date_to, historical
+    )
+
+    where = ["i.incident_type = 'down'", "i.opened_at <= :end"]
+    params = {"end": end, "now": now}
+    if start:
+        where.append("COALESCE(i.closed_at, :now) >= :start")
+        params["start"] = start
+    if customer:
+        where.append("d.customer_id = :customer")
+        params["customer"] = customer
+    if site:
+        where.append("d.site_id = :site")
+        params["site"] = site
+    if device:
+        where.append("d.id = :device")
+        params["device"] = device
+
+    sql = text(f"""
+        SELECT
+            i.id,
+            i.device_id,
+            i.opened_at,
+            i.closed_at,
+            i.duration_seconds,
+            d.name AS device_name,
+            d.customer_id,
+            d.site_id,
+            c.name AS customer_name,
+            s.name AS site_name
+        FROM device_incidents i
+        JOIN devices d ON d.id = i.device_id
+        LEFT JOIN customers c ON c.id = d.customer_id
+        LEFT JOIN sites s ON s.id = d.site_id
+        WHERE {' AND '.join(where)}
+        ORDER BY i.opened_at ASC
+    """)
+    raw = db.execute(sql, params).mappings().all()
+
+    incidents = []
+    for row in raw:
+        opened = _rv_dt_utc(row["opened_at"])
+        closed = _rv_dt_utc(row["closed_at"]) if row["closed_at"] else now
+        effective_start = max(opened, start) if start else opened
+        effective_end = min(closed, end)
+        if effective_end <= effective_start:
+            continue
+        duration = int((effective_end - effective_start).total_seconds())
+        incidents.append({
+            "id": row["id"],
+            "device_id": str(row["device_id"]),
+            "device_name": row["device_name"],
+            "customer_id": str(row["customer_id"] or ""),
+            "customer_name": row["customer_name"] or "-",
+            "site_id": str(row["site_id"] or ""),
+            "site_name": row["site_name"] or "-",
+            "opened_at": opened,
+            "closed_at": _rv_dt_utc(row["closed_at"]) if row["closed_at"] else None,
+            "effective_start": effective_start,
+            "effective_end": effective_end,
+            "duration_seconds": duration,
+            "duration_label": _rv_duration_label(duration),
+            "is_open": row["closed_at"] is None,
+        })
+
+    summary_map = {}
+    for inc in incidents:
+        item = summary_map.setdefault(inc["device_id"], {
+            "device_id": inc["device_id"],
+            "device_name": inc["device_name"],
+            "customer_name": inc["customer_name"],
+            "site_name": inc["site_name"],
+            "events": 0,
+            "total_seconds": 0,
+            "max_seconds": 0,
+            "last_down": None,
+            "open_events": 0,
+        })
+        item["events"] += 1
+        item["total_seconds"] += inc["duration_seconds"]
+        item["max_seconds"] = max(item["max_seconds"], inc["duration_seconds"])
+        item["last_down"] = max(
+            [x for x in (item["last_down"], inc["opened_at"]) if x is not None]
+        )
+        if inc["is_open"]:
+            item["open_events"] += 1
+
+    if start:
+        window_seconds = max(1, int((end - start).total_seconds()))
+    else:
+        window_seconds = None
+
+    router_rows = []
+    for item in summary_map.values():
+        item["avg_seconds"] = int(item["total_seconds"] / item["events"]) if item["events"] else 0
+        item["total_label"] = _rv_duration_label(item["total_seconds"])
+        item["avg_label"] = _rv_duration_label(item["avg_seconds"])
+        item["max_label"] = _rv_duration_label(item["max_seconds"])
+        item["availability"] = (
+            round(max(0.0, 100.0 * (1.0 - item["total_seconds"] / window_seconds)), 4)
+            if window_seconds else None
+        )
+        router_rows.append(item)
+
+    router_rows.sort(key=lambda x: (-x["events"], -x["total_seconds"], x["device_name"].lower()))
+
+    # Group incidents from the same Site into common outage windows. A small
+    # 3-minute merge gap absorbs sampling offsets between devices.
+    site_groups = {}
+    for inc in incidents:
+        if not inc["site_id"]:
+            continue
+        site_groups.setdefault(inc["site_id"], []).append(inc)
+
+    site_outages = []
+    merge_gap = timedelta(minutes=3)
+    for site_id, items in site_groups.items():
+        items.sort(key=lambda x: x["effective_start"])
+        cluster = None
+        for inc in items:
+            if cluster is None or inc["effective_start"] > cluster["end"] + merge_gap:
+                if cluster and len(cluster["device_ids"]) >= 2:
+                    site_outages.append(cluster)
+                cluster = {
+                    "site_id": site_id,
+                    "site_name": inc["site_name"],
+                    "customer_name": inc["customer_name"],
+                    "start": inc["effective_start"],
+                    "end": inc["effective_end"],
+                    "device_ids": {inc["device_id"]},
+                    "device_names": {inc["device_name"]},
+                    "open": inc["is_open"],
+                }
+            else:
+                cluster["end"] = max(cluster["end"], inc["effective_end"])
+                cluster["device_ids"].add(inc["device_id"])
+                cluster["device_names"].add(inc["device_name"])
+                cluster["open"] = cluster["open"] or inc["is_open"]
+        if cluster and len(cluster["device_ids"]) >= 2:
+            site_outages.append(cluster)
+
+    for outage in site_outages:
+        outage["affected"] = len(outage["device_ids"])
+        outage["devices"] = ", ".join(sorted(outage["device_names"], key=str.lower))
+        outage["duration_seconds"] = int((outage["end"] - outage["start"]).total_seconds())
+        outage["duration_label"] = _rv_duration_label(outage["duration_seconds"])
+    site_outages.sort(key=lambda x: x["start"], reverse=True)
+
+    total_seconds = sum(x["total_seconds"] for x in router_rows)
+    worst = max(router_rows, key=lambda x: x["total_seconds"], default=None)
+    summary = {
+        "affected_routers": len(router_rows),
+        "incidents": len(incidents),
+        "total_seconds": total_seconds,
+        "total_label": _rv_duration_label(total_seconds),
+        "site_outages": len(site_outages),
+        "open_incidents": sum(1 for x in incidents if x["is_open"]),
+        "worst_router": worst["device_name"] if worst else "-",
+        "worst_seconds": worst["total_seconds"] if worst else 0,
+        "worst_label": _rv_duration_label(worst["total_seconds"]) if worst else "-",
+    }
+
+    return {
+        "routers": router_rows,
+        "site_outages": site_outages,
+        "incidents": sorted(incidents, key=lambda x: x["opened_at"], reverse=True),
+        "summary": summary,
+        "window_start": start,
+        "window_end": end,
+        "baseline": baseline,
+        "historical": bool(historical),
+    }
+
+
+@app.get("/reports/downtime", response_class=HTMLResponse)
+def downtime_report_page(
+    request: Request,
+    customer: str = "",
+    site: str = "",
+    device: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    history: int = 0,
+    db: Session = Depends(get_db),
+):
+    if not logged_in(request):
+        return RedirectResponse("/login", status_code=302)
+
+    scope = restricted_customer_scope(request)
+    if scope:
+        customer = scope
+
+    data = _rv_downtime_report_data(
+        db, customer, site, device, date_from, date_to, bool(history)
+    )
+    customers = db.scalars(select(Customer).order_by(Customer.name)).all()
+    sites = db.scalars(select(Site).order_by(Site.name)).all()
+    devices = db.scalars(select(Device).order_by(Device.name)).all()
+    if scope:
+        customers = [x for x in customers if str(x.id) == str(scope)]
+        sites = [x for x in sites if str(x.customer_id) == str(scope)]
+        devices = [x for x in devices if str(x.customer_id) == str(scope)]
+
+    local_today = datetime.now(application_timezone()).date()
+    return templates.TemplateResponse(
+        request=request,
+        name="downtime.html",
+        context={
+            "app_name": settings.app_name,
+            "data": data,
+            "customers_list": customers,
+            "sites_list": sites,
+            "devices_list": devices,
+            "filters": {
+                "customer": customer, "site": site, "device": device,
+                "date_from": date_from, "date_to": date_to, "history": int(bool(history)),
+            },
+            "today": local_today.isoformat(),
+            "date_7": (local_today - timedelta(days=7)).isoformat(),
+            "date_30": (local_today - timedelta(days=30)).isoformat(),
+        },
+    )
+
+
+def _rv_downtime_export_data(request, db, customer, site, device, date_from, date_to, history):
+    scope = restricted_customer_scope(request)
+    if scope:
+        customer = scope
+    return _rv_downtime_report_data(
+        db, customer, site, device, date_from, date_to, bool(history)
+    )
+
+
+@app.get("/reports/downtime.csv")
+def downtime_report_csv(
+    request: Request,
+    customer: str = "",
+    site: str = "",
+    device: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    history: int = 0,
+    db: Session = Depends(get_db),
+):
+    if not logged_in(request):
+        raise HTTPException(401, "Login required")
+    data = _rv_downtime_export_data(
+        request, db, customer, site, device, date_from, date_to, history
+    )
+    out = io.StringIO()
+    out.write("\ufeff")
+    writer = csv.writer(out)
+    writer.writerow([
+        "Customer", "Site", "Router", "Down events", "Total downtime",
+        "Average downtime", "Maximum downtime", "Availability %", "Last down", "Open incidents"
+    ])
+    for row in data["routers"]:
+        writer.writerow([
+            row["customer_name"], row["site_name"], row["device_name"], row["events"],
+            row["total_label"], row["avg_label"], row["max_label"],
+            "" if row["availability"] is None else row["availability"],
+            athens_time(row["last_down"]).strftime("%Y-%m-%d %H:%M:%S") if row["last_down"] else "",
+            row["open_events"],
+        ])
+    return Response(
+        content=out.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="router-vault-downtime.csv"'},
+    )
+
+
+@app.get("/reports/downtime.xlsx")
+def downtime_report_xlsx(
+    request: Request,
+    customer: str = "",
+    site: str = "",
+    device: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    history: int = 0,
+    db: Session = Depends(get_db),
+):
+    if not logged_in(request):
+        raise HTTPException(401, "Login required")
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
+    data = _rv_downtime_export_data(
+        request, db, customer, site, device, date_from, date_to, history
+    )
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Router Downtime"
+    headers = [
+        "Customer", "Site", "Router", "Down events", "Total downtime",
+        "Average downtime", "Maximum downtime", "Availability %", "Last down", "Open incidents"
+    ]
+    ws.append(headers)
+    for row in data["routers"]:
+        ws.append([
+            row["customer_name"], row["site_name"], row["device_name"], row["events"],
+            row["total_label"], row["avg_label"], row["max_label"], row["availability"],
+            athens_time(row["last_down"]).strftime("%d/%m/%Y %H:%M") if row["last_down"] else "",
+            row["open_events"],
+        ])
+
+    ws2 = wb.create_sheet("Site Outages")
+    ws2.append(["Customer", "Site", "Start", "End", "Duration", "Affected routers", "Routers", "Open"])
+    for row in data["site_outages"]:
+        ws2.append([
+            row["customer_name"], row["site_name"],
+            athens_time(row["start"]).strftime("%d/%m/%Y %H:%M"),
+            athens_time(row["end"]).strftime("%d/%m/%Y %H:%M"),
+            row["duration_label"], row["affected"], row["devices"], "YES" if row["open"] else "NO",
+        ])
+
+    ws3 = wb.create_sheet("Incident Detail")
+    ws3.append(["Customer", "Site", "Router", "Opened", "Closed", "Duration", "Open"])
+    for row in data["incidents"]:
+        ws3.append([
+            row["customer_name"], row["site_name"], row["device_name"],
+            athens_time(row["opened_at"]).strftime("%d/%m/%Y %H:%M:%S"),
+            athens_time(row["closed_at"]).strftime("%d/%m/%Y %H:%M:%S") if row["closed_at"] else "",
+            row["duration_label"], "YES" if row["is_open"] else "NO",
+        ])
+
+    for sheet in wb.worksheets:
+        sheet.freeze_panes = "A2"
+        for cell in sheet[1]:
+            cell.font = Font(bold=True)
+        for col in range(1, sheet.max_column + 1):
+            letter = get_column_letter(col)
+            width = max(
+                [len(str(sheet.cell(r, col).value or "")) for r in range(1, min(sheet.max_row, 500) + 1)] or [10]
+            )
+            sheet.column_dimensions[letter].width = min(max(width + 2, 10), 48)
+
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    return StreamingResponse(
+        out,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="router-vault-downtime.xlsx"'},
     )
 
 
@@ -1771,7 +2181,6 @@ def delete_selected_backups(
 def device_page(device_id: str, request: Request, db: Session = Depends(get_db)):
     if not logged_in(request):
         return RedirectResponse("/login", status_code=302)
-    reconcile_last_backup_cache()
     device = db.get(Device, device_id)
     if not device:
         raise HTTPException(404, "Device not found")
@@ -2146,7 +2555,6 @@ def site_delete_save(
 def customer_page(customer_id: str, request: Request, db: Session = Depends(get_db)):
     if not logged_in(request):
         return RedirectResponse("/login", status_code=302)
-    reconcile_last_backup_cache()
     scope_customer = restricted_customer_scope(request)
     if scope_customer and str(scope_customer) != str(customer_id):
         raise HTTPException(403, "Forbidden")
@@ -2166,7 +2574,6 @@ def customer_page(customer_id: str, request: Request, db: Session = Depends(get_
 def site_page(site_id: str, request: Request, db: Session = Depends(get_db)):
     if not logged_in(request):
         return RedirectResponse("/login", status_code=302)
-    reconcile_last_backup_cache()
     site = db.get(Site, site_id)
     if not site:
         raise HTTPException(404, "Site not found")
@@ -2481,7 +2888,6 @@ def rotate_device_token(device_id: str, request: Request, db: Session = Depends(
 @app.get("/reports.xlsx")
 def reports_xlsx(request: Request, report: str = "devices", db: Session = Depends(get_db)):
     if not logged_in(request): raise HTTPException(401, "Login required")
-    reconcile_last_backup_cache()
     scope = restricted_customer_scope(request)
     devices = db.scalars(select(Device).order_by(Device.name)).all()
     if scope: devices=[d for d in devices if d.customer_id==scope]
@@ -2497,8 +2903,9 @@ def reports_xlsx(request: Request, report: str = "devices", db: Session = Depend
         data=v2_xlsx_bytes("Backup Compliance",headers,rows)
         filename="router-vault-backup-compliance.xlsx"
     elif report == "availability":
+        availability_map = v2_availability_many(devices, (1, 7, 30))
         headers=["Customer","Site","Device","1d %","7d %","30d %"]
-        rows=[[customers.get(d.customer_id).name if customers.get(d.customer_id) else "", sites.get(d.site_id).name if d.site_id and sites.get(d.site_id) else "", d.name, v2_availability(d.id,1), v2_availability(d.id,7), v2_availability(d.id,30)] for d in devices]
+        rows=[[customers.get(d.customer_id).name if customers.get(d.customer_id) else "", sites.get(d.site_id).name if d.site_id and sites.get(d.site_id) else "", d.name, availability_map.get(str(d.id), {}).get(1), availability_map.get(str(d.id), {}).get(7), availability_map.get(str(d.id), {}).get(30)] for d in devices]
         data=v2_xlsx_bytes("Availability",headers,rows); filename="router-vault-availability.xlsx"
     else:
         headers=["Customer","Site","Device","Model","RouterOS","Status","CPU","RAM","WAN IP","Last heartbeat","Last backup"]
